@@ -1,0 +1,114 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   Design tokens — semantic surfaces driven by CSS variables.
+   Tailwind reads these via rgb(var(--token) / <alpha-value>).
+   ============================================================ */
+@layer base {
+  :root {
+    /* Light theme */
+    --surface: 255 255 255;       /* base card / panel */
+    --surface-2: 248 250 252;     /* app background */
+    --surface-3: 241 245 249;     /* subtle fills, hovers */
+    --ink: 15 23 42;              /* primary text */
+    --ink-muted: 71 85 105;       /* secondary text */
+    --ink-subtle: 148 163 184;    /* tertiary text */
+    --line: 226 232 240;          /* borders */
+  }
+
+  .dark {
+    /* Dark theme */
+    --surface: 17 24 39;          /* base card / panel */
+    --surface-2: 9 13 24;         /* app background */
+    --surface-3: 30 41 59;        /* subtle fills, hovers */
+    --ink: 241 245 249;
+    --ink-muted: 148 163 184;
+    --ink-subtle: 100 116 139;
+    --line: 39 49 68;
+  }
+
+  * {
+    border-color: rgb(var(--line));
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-surface-2 text-ink font-sans antialiased;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgb(var(--surface-3));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--ink-subtle));
+    background-clip: padding-box;
+  }
+}
+
+@layer components {
+  /* Frosted glass surface used in nav bars & hero accents */
+  .glass {
+    @apply bg-surface/70 backdrop-blur-xl border border-line;
+  }
+
+  /* Gradient text helper */
+  .text-gradient {
+    @apply bg-brand-gradient bg-clip-text text-transparent;
+  }
+
+  /* Base card */
+  .card {
+    @apply bg-surface border border-line rounded-2xl shadow-soft;
+  }
+
+  /* Focus ring used by interactive elements */
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+}
+
+@layer utilities {
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgb(var(--ink) / 0.06),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
