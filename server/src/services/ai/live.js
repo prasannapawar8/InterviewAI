@@ -366,7 +366,7 @@ function transcriptFallbackSummary({ candidate, role, overallScore, sentiment, s
   }
 }
 
-export async function summarizeInterview({ candidate, role, overallScore, sentiment, strengths, weaknesses, metrics, transcript }) {
+export async function summarizeInterview({ candidate, role, overallScore, sentiment, strengths, weaknesses, metrics, transcript, rubricInstructions }) {
   const rec = recommendationFromScore(overallScore)
   const fallback = transcriptFallbackSummary({
     candidate,
@@ -380,12 +380,15 @@ export async function summarizeInterview({ candidate, role, overallScore, sentim
   if (!hasLlm()) return fallback
   try {
     const sample = transcript.slice(0, 24).map((l) => `${l.speaker}: ${l.text}`).join('\n')
+    const rubricBlock = rubricInstructions
+      ? `\nCustom rubric instructions from the hiring team:\n${rubricInstructions}\nUse these criteria to guide your evaluation and recommendations.\n`
+      : ''
     const data = await chatJson(
       `Write an interview hiring report as JSON with keys:
 executive (string), keyStrengths (string[3]), improvements (string[3]), recommendations (string[3]), recommendation (one of Advance, Consider, Reject).
 Candidate: ${candidate}. Role: ${role}. Score: ${overallScore}. Sentiment: ${sentiment}.
 Strengths: ${strengths.join('; ')}. Weaknesses: ${weaknesses.join('; ')}.
-Metrics: ${JSON.stringify(metrics)}. Transcript sample:\n${sample}`,
+Metrics: ${JSON.stringify(metrics)}.${rubricBlock} Transcript sample:\n${sample}`,
     )
     return {
       executive: data.executive || fallback.executive,
@@ -400,7 +403,7 @@ Metrics: ${JSON.stringify(metrics)}. Transcript sample:\n${sample}`,
   }
 }
 
-export async function analyzeLive({ id, candidate, role, date, durationSeconds, buffer, mime, fileName, onStage }) {
+export async function analyzeLive({ id, candidate, role, date, durationSeconds, buffer, mime, fileName, onStage, rubricInstructions }) {
   await onStage?.('stt', 25)
   const stt = await transcribeAudio(buffer, { mime, fileName })
   const duration = Math.round(stt.duration || durationSeconds)
@@ -436,6 +439,7 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
     weaknesses,
     metrics: communicationMetrics,
     transcript,
+    rubricInstructions,
   })
   return {
     overview: {

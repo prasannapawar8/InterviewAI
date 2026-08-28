@@ -56,6 +56,7 @@ export async function createAnalysisJob({
   let roleName = role?.trim() || ''
   let scorecard = null
   let linkedTemplateId = null
+  let rubricInstructions = null
   if (templateId) {
     const template = await prisma.roleTemplate.findFirst({ where: { id: String(templateId), orgId } })
     if (template) {
@@ -63,6 +64,7 @@ export async function createAnalysisJob({
       if (!pack) pack = template.questionPack || null
       if (!roleName) roleName = template.roleTitle || ''
       scorecard = snapshotFromTemplate(template)
+      rubricInstructions = template.rubricInstructions || null
     }
   }
 
@@ -85,6 +87,7 @@ export async function createAnalysisJob({
       questionPack: pack,
       templateId: linkedTemplateId,
       scorecard,
+      rubricInstructions,
     },
   })
 
@@ -150,6 +153,7 @@ export function toAnalysisDoc(row) {
     templateId: row.templateId || null,
     scorecard: row.scorecard || null,
     scorecardAverage: scorecardAverage(row.scorecard),
+    rubricInstructions: row.rubricInstructions || '',
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
   }
 }

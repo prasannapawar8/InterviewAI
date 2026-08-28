@@ -43,6 +43,7 @@ export async function processAnalysisJob({ analysisId }) {
         buffer,
         mime,
         fileName: row.fileName,
+        rubricInstructions: row.rubricInstructions || null,
         onStage: async (stage, progress) => {
           await setProgress(analysisId, { stage, progress })
         },

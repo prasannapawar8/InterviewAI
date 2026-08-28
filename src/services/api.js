@@ -157,6 +157,7 @@ export const templateService = {
   create: (body) => request('/templates', { method: 'POST', body }),
   update: (id, body) => request(`/templates/${id}`, { method: 'PATCH', body }),
   remove: (id) => request(`/templates/${id}`, { method: 'DELETE' }),
+  clone: (id) => request(`/templates/${id}/clone`, { method: 'POST' }),
 }
 
 export const billingService = {

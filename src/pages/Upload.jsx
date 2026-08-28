@@ -152,6 +152,8 @@ export default function Upload() {
                   if (t) {
                     if (t.roleTitle) setRole(t.roleTitle)
                     if (t.questionPack) setQuestionPack(t.questionPack)
+                  } else {
+                    setQuestionPack('')
                   }
                 }}
                 className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm focus-ring"
@@ -164,6 +166,51 @@ export default function Upload() {
                   </option>
                 ))}
               </select>
+              {/* Template preview card */}
+              {(() => {
+                const selectedTemplate = templates.find((x) => x.id === templateId)
+                if (!selectedTemplate) return null
+                const weights = selectedTemplate.competencyWeights || {}
+                const qCount = (selectedTemplate.questionPack || '').split('\n').filter((l) => l.trim().length >= 8).length
+                return (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/[0.03] p-4">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Template rubric preview
+                    </div>
+                    {selectedTemplate.description && (
+                      <p className="mt-1.5 text-xs text-ink-muted">{selectedTemplate.description}</p>
+                    )}
+                    <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+                      {(selectedTemplate.competencies || []).map((label) => (
+                        <div key={label} className="flex items-center gap-1.5 text-xs text-ink-muted">
+                          <span>{label}</span>
+                          <span className="flex gap-px">
+                            {[1, 2, 3, 4, 5].map((n) => (
+                              <span
+                                key={n}
+                                className={cn(
+                                  'inline-block h-1.5 w-1.5 rounded-full',
+                                  n <= (weights[label] || 3) ? 'bg-primary' : 'bg-line',
+                                )}
+                              />
+                            ))}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-2 flex gap-3 text-[11px] text-ink-subtle">
+                      <span>{qCount} question{qCount !== 1 ? 's' : ''}</span>
+                      {selectedTemplate.rubricInstructions && <span>• AI rubric active</span>}
+                    </div>
+                    {selectedTemplate.rubricInstructions && (
+                      <p className="mt-2 line-clamp-2 text-[11px] italic text-ink-subtle">
+                        "{selectedTemplate.rubricInstructions}"
+                      </p>
+                    )}
+                  </div>
+                )
+              })()}
               <textarea
                 value={questionPack}
                 onChange={(e) => setQuestionPack(e.target.value)}

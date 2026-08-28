@@ -783,6 +783,16 @@ export default function Results() {
           }
         />
         <Card>
+          {/* Rubric criteria banner */}
+          {data.rubricInstructions && (
+            <div className="mb-5 rounded-xl border border-accent/20 bg-accent/5 p-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-accent">
+                <Sparkles className="h-3.5 w-3.5" />
+                AI rubric criteria
+              </div>
+              <p className="mt-1.5 text-sm text-ink-muted">{data.rubricInstructions}</p>
+            </div>
+          )}
           {!shareMode && canReview && templates.length ? (
             <div className="mb-5 flex flex-wrap items-end gap-2">
               <label className="min-w-[12rem] flex-1 text-sm">
@@ -810,7 +820,7 @@ export default function Results() {
               <div className="mb-4 flex items-center justify-between gap-3">
                 <p className="text-sm text-ink-muted">
                   {data.scorecardAverage != null
-                    ? `Average ${data.scorecardAverage}/5 across rated skills`
+                    ? `${scorecard.items.some((i) => i.weight && i.weight !== 3) ? 'Weighted average' : 'Average'} ${data.scorecardAverage}/5 across rated skills`
                     : 'No ratings yet'}
                 </p>
                 {overview.overallScore != null ? (
@@ -820,7 +830,22 @@ export default function Results() {
               <ul className="space-y-4">
                 {scorecard.items.map((item) => (
                   <li key={item.label} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="text-sm font-medium text-ink">{item.label}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-ink">{item.label}</span>
+                      {item.weight && item.weight !== 3 && (
+                        <span className="flex gap-px" title={`Weight: ${item.weight}/5`}>
+                          {[1, 2, 3, 4, 5].map((n) => (
+                            <span
+                              key={n}
+                              className={cn(
+                                'inline-block h-1.5 w-1.5 rounded-full',
+                                n <= item.weight ? 'bg-primary' : 'bg-line',
+                              )}
+                            />
+                          ))}
+                        </span>
+                      )}
+                    </div>
                     <div className="flex gap-1">
                       {[1, 2, 3, 4, 5].map((n) => (
                         <button

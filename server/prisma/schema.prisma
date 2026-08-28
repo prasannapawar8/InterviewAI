@@ -106,6 +106,7 @@ model Analysis {
   questionPack     String?
   templateId       String?
   scorecard        Json?
+  rubricInstructions String?
   archivedAt       DateTime?
   createdAt        DateTime      @default(now())
   mediaExpiresAt   DateTime?
@@ -119,16 +120,19 @@ model Analysis {
 }
 
 model RoleTemplate {
-  id           String       @id
-  orgId        String
-  name         String
-  roleTitle    String       @default("")
-  questionPack String       @default("")
-  competencies Json
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
-  analyses     Analysis[]
+  id                 String       @id
+  orgId              String
+  name               String
+  roleTitle          String       @default("")
+  description        String       @default("")
+  questionPack       String       @default("")
+  rubricInstructions String       @default("")
+  competencies       Json
+  competencyWeights  Json?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  org                Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  analyses           Analysis[]
 
   @@index([orgId])
 }
