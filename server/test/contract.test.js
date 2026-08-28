@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { generateAnalysis } from '../src/services/ai/engine.js'
 import { computeScore, buildMetrics, sentimentLabel, recommendationFromScore } from '../src/services/ai/score.js'
-import { wordsToTranscript, estimateConfidenceFromWords, metricsFromWords } from '../src/services/ai/live.js'
+import { wordsToTranscript, estimateConfidenceFromWords, metricsFromWords, prepareTranscript, assignDiarizedRoles } from '../src/services/ai/live.js'
 
 const REQUIRED_KEYS = [
   'overview',
@@ -66,6 +66,19 @@ describe('analysis result contract', () => {
     const transcript = wordsToTranscript(segs)
     assert.equal(transcript[0].speaker, 'Candidate')
     assert.ok(transcript[0].time)
+    const mixed = prepareTranscript([
+      { time: '00:01', speaker: 'Candidate', text: 'Could you walk me through your background?' },
+      { time: '00:12', speaker: 'Candidate', text: 'I have six years of experience in backend systems.' },
+    ])
+    assert.equal(mixed[0].speaker, 'Interviewer')
+    assert.equal(mixed[1].speaker, 'Candidate')
+    const roles = assignDiarizedRoles([
+      { speakerId: 0, text: 'Tell me about a project you are proud of?' },
+      { speakerId: 0, text: 'How did you measure success?' },
+      { speakerId: 1, text: 'We redesigned onboarding and cut drop-off by 34 percent with a longer detailed answer about the process.' },
+    ])
+    assert.equal(roles['0'], 'Interviewer')
+    assert.equal(roles['1'], 'Candidate')
     const trend = estimateConfidenceFromWords(words, 120)
     assert.ok(trend.length)
     assert.ok(typeof trend[0].confidence === 'number')

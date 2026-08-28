@@ -69,8 +69,8 @@ export default {
           '50%': { transform: 'translateY(-10px)' },
         },
         'pulse-ring': {
-          '0%': { transform: 'scale(0.9)', opacity: '0.7' },
-          '70%, 100%': { transform: 'scale(1.6)', opacity: '0' },
+          '0%': { transform: 'scale(0.95)', opacity: '0.55' },
+          '70%, 100%': { transform: 'scale(1.45)', opacity: '0' },
         },
       },
       animation: {

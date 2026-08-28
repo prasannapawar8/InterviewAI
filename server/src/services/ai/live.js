@@ -4,6 +4,8 @@ import { logger } from '../../logger.js'
 import { buildMetrics, computeScore, sentimentLabel, recommendationFromScore } from './score.js'
 
 const FILLER_RE = /\b(um+|uh+|er+|ah+|like|you know|basically|actually)\b/gi
+const INTERVIEWER_OPEN =
+  /^(so,?\s+|and,?\s+|ok(ay)?,?\s+|alright,?\s+|right,?\s+|great,?\s+|thanks?\b|thank you|could you|can you|would you|tell me|walk me|talk (to )?me|describe |explain |what\b|why\b|how\b|when\b|where\b|who\b|have you|did you|do you|are you|is there|let's |lets )/i
 
 function parseTime(t) {
   if (typeof t === 'number') return t
@@ -13,18 +15,83 @@ function parseTime(t) {
   return 0
 }
 
+export function looksLikeInterviewerUtterance(text) {
+  const t = String(text || '').trim()
+  if (!t) return false
+  if (/\?\s*$/.test(t)) return true
+  const words = t.split(/\s+/).filter(Boolean).length
+  if (words <= 22 && INTERVIEWER_OPEN.test(t)) return true
+  return false
+}
+
+export function assignDiarizedRoles(utterances) {
+  const ids = [...new Set(utterances.map((u) => u.speakerId).filter((id) => id !== null && id !== undefined))]
+  if (ids.length < 2) return null
+  const stats = ids.map((id) => {
+    const utts = utterances.filter((u) => u.speakerId === id)
+    const words = utts.reduce((n, u) => n + String(u.text || '').split(/\s+/).filter(Boolean).length, 0)
+    const questions = utts.filter((u) => looksLikeInterviewerUtterance(u.text)).length
+    return { id, words, questions, count: utts.length, qRatio: questions / Math.max(1, utts.length) }
+  })
+  const totalWords = stats.reduce((s, x) => s + x.words, 0) || 1
+  for (const s of stats) {
+    s.score = s.qRatio * 4 + (1 - s.words / totalWords) * 2 + (s.questions > 0 ? 1.5 : 0)
+  }
+  stats.sort((a, b) => b.score - a.score)
+  const interviewerId = stats[0].id
+  return Object.fromEntries(ids.map((id) => [String(id), id === interviewerId ? 'Interviewer' : 'Candidate']))
+}
+
 function speakerFrom(seg) {
-  const s = (seg.speaker || seg.role || '').toString().toLowerCase()
-  if (s.includes('interview') || s === 'a' || s === '0') return 'Interviewer'
+  const raw = (seg.speaker ?? seg.role ?? '').toString().trim()
+  const lower = raw.toLowerCase()
+  if (raw === 'Interviewer' || lower.includes('interview')) return 'Interviewer'
+  if (raw === 'Candidate' || lower.includes('candid')) return 'Candidate'
+  if (looksLikeInterviewerUtterance(seg.text || seg.transcript)) return 'Interviewer'
   return 'Candidate'
 }
 
 export function wordsToTranscript(segments) {
-  return segments.map((seg) => ({
-    time: formatDuration(Math.round(parseTime(seg.start ?? seg.time ?? 0))),
-    speaker: speakerFrom(seg),
-    text: String(seg.text || seg.transcript || '').trim(),
-  })).filter((l) => l.text)
+  return (segments || [])
+    .map((seg) => ({
+      time: formatDuration(Math.round(parseTime(seg.start ?? seg.time ?? 0))),
+      speaker: speakerFrom(seg),
+      text: String(seg.text || seg.transcript || '').trim(),
+    }))
+    .filter((l) => l.text)
+}
+
+export function mergeConsecutiveSpeakers(lines) {
+  const out = []
+  for (const line of lines || []) {
+    const last = out[out.length - 1]
+    if (last && last.speaker === line.speaker) {
+      last.text = `${last.text} ${line.text}`.replace(/\s+/g, ' ').trim()
+    } else {
+      out.push({ time: line.time, speaker: line.speaker, text: line.text })
+    }
+  }
+  return out
+}
+
+/** Relabel a stored or live transcript so Interviewer vs Candidate is visible. */
+export function prepareTranscript(lines) {
+  const mapped = wordsToTranscript(
+    (lines || []).map((l) => ({
+      start: l.time ?? l.start ?? 0,
+      speaker: l.speaker,
+      text: l.text,
+    })),
+  )
+  const roles = new Set(mapped.map((l) => l.speaker))
+  const refined =
+    roles.size >= 2
+      ? mapped
+      : mapped.map((l) => ({
+          ...l,
+          speaker: looksLikeInterviewerUtterance(l.text) ? 'Interviewer' : 'Candidate',
+        }))
+  return mergeConsecutiveSpeakers(refined)
 }
 
 function windowStats(words, durationSeconds, buckets = 7) {
@@ -92,7 +159,15 @@ async function whisperTranscribe(buffer, mime, fileName) {
 }
 
 async function deepgramTranscribe(buffer, mime) {
-  const res = await fetch('https://api.deepgram.com/v1/listen?model=nova-2&smart_format=true&utterances=true&punctuate=true&filler_words=true', {
+  const params = new URLSearchParams({
+    model: 'nova-2',
+    smart_format: 'true',
+    punctuate: 'true',
+    filler_words: 'true',
+    utterances: 'true',
+    diarize: 'true',
+  })
+  const res = await fetch(`https://api.deepgram.com/v1/listen?${params}`, {
     method: 'POST',
     headers: {
       Authorization: `Token ${config.deepgramApiKey}`,
@@ -111,7 +186,6 @@ function normalizeWhisper(raw) {
   const segments = (raw.segments || []).map((s) => ({
     start: s.start,
     text: s.text,
-    speaker: 'Candidate',
   }))
   const words = (raw.words || []).map((w) => ({
     start: w.start,
@@ -122,19 +196,39 @@ function normalizeWhisper(raw) {
   return { text: raw.text, duration: raw.duration, segments, words }
 }
 
+function numericSpeaker(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (value == null || value === '') return null
+  const n = Number(value)
+  return Number.isFinite(n) ? n : null
+}
+
 function normalizeDeepgram(raw) {
   const alt = raw.results?.channels?.[0]?.alternatives?.[0]
   const utterances = raw.results?.utterances || []
-  const segments = utterances.length
-    ? utterances.map((u) => ({ start: u.start, text: u.transcript, speaker: u.speaker === 0 ? 'Interviewer' : 'Candidate' }))
-    : [{ start: 0, text: alt?.transcript || '', speaker: 'Candidate' }]
-  const words = (alt?.words || []).map((w) => ({
-    start: w.start,
-    word: w.word,
-    confidence: w.confidence ?? 0.8,
-    text: w.word,
-    speaker: w.speaker === 0 ? 'Interviewer' : 'Candidate',
+  const withIds = utterances.map((u) => ({
+    start: u.start,
+    text: u.transcript,
+    speakerId: numericSpeaker(u.speaker),
   }))
+  const roleMap = assignDiarizedRoles(withIds)
+  const segments = withIds.length
+    ? withIds.map((u) => ({
+        start: u.start,
+        text: u.text,
+        speaker: roleMap && u.speakerId != null ? roleMap[String(u.speakerId)] : undefined,
+      }))
+    : [{ start: 0, text: alt?.transcript || '' }]
+  const words = (alt?.words || []).map((w) => {
+    const speakerId = numericSpeaker(w.speaker)
+    return {
+      start: w.start,
+      word: w.word,
+      confidence: w.confidence ?? 0.8,
+      text: w.word,
+      speaker: roleMap && speakerId != null ? roleMap[String(speakerId)] : undefined,
+    }
+  })
   return { text: alt?.transcript || '', duration: raw.metadata?.duration, segments, words }
 }
 
@@ -327,7 +421,7 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
   await onStage?.('stt', 25)
   const stt = await transcribeAudio(buffer, { mime, fileName })
   const duration = Math.round(stt.duration || durationSeconds)
-  const transcript = wordsToTranscript(stt.segments)
+  const transcript = prepareTranscript(wordsToTranscript(stt.segments))
   const words = stt.words?.length ? stt.words : transcript.map((l, i) => ({ start: i * 8, word: l.text, confidence: 0.8, speaker: l.speaker }))
   await onStage?.('sentiment', 50)
   const sentiment = await analyzeSentimentWindows(transcript, duration)

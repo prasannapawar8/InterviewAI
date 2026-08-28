@@ -59,34 +59,37 @@ export default function Processing() {
   }, [analysisId, navigate])
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-surface-2 px-4">
-      {/* ambient background */}
-      <div className="pointer-events-none absolute inset-0 bg-brand-radial" />
-      <div className="pointer-events-none absolute left-1/3 top-1/4 h-72 w-72 rounded-full bg-primary/15 blur-3xl animate-float" />
-      <div
-        className="pointer-events-none absolute right-1/3 bottom-1/4 h-72 w-72 rounded-full bg-accent/15 blur-3xl animate-float"
-        style={{ animationDelay: '2s' }}
-      />
-
-      <div className="absolute top-8">
-        <Logo to={null} />
+    <div className="relative min-h-screen overflow-y-auto bg-surface-2">
+      {/* ambient background — clipped so blobs never cover copy */}
+      <div className="pointer-events-none absolute inset-0 overflow-hidden">
+        <div className="absolute inset-0 bg-brand-radial" />
+        <div className="absolute left-1/3 top-0 h-64 w-64 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute bottom-0 right-1/4 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
       </div>
 
-      <div className="relative w-full max-w-lg">
-        {/* AI brain indicator */}
+      <div className="relative mx-auto flex min-h-full w-full max-w-lg flex-col px-4 py-10 sm:py-14">
+        <div className="mb-8 flex justify-center">
+          <Logo to={null} />
+        </div>
+
         <div className="flex flex-col items-center text-center">
-          <div className="relative grid place-items-center">
-            <span className="absolute h-28 w-28 rounded-full bg-primary/30 animate-pulse-ring" />
-            <span
-              className="absolute h-28 w-28 rounded-full bg-secondary/20 animate-pulse-ring"
-              style={{ animationDelay: '0.6s' }}
-            />
+          {/* Reserved well so pulse-rings cannot overlap the heading */}
+          <div className="relative grid h-44 w-44 shrink-0 place-items-center overflow-hidden">
+            <span aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
+              <span className="h-24 w-24 rounded-full bg-primary/30 animate-pulse-ring" />
+            </span>
+            <span aria-hidden className="pointer-events-none absolute inset-0 grid place-items-center">
+              <span
+                className="h-24 w-24 rounded-full bg-secondary/20 animate-pulse-ring"
+                style={{ animationDelay: '0.6s' }}
+              />
+            </span>
             <motion.div
               animate={{ rotate: done ? 0 : 360 }}
               transition={
                 done ? { duration: 0.4 } : { repeat: Infinity, duration: 8, ease: 'linear' }
               }
-              className="relative grid h-24 w-24 place-items-center rounded-3xl bg-brand-gradient text-white shadow-glow"
+              className="relative z-10 grid h-24 w-24 place-items-center rounded-3xl bg-brand-gradient text-white shadow-glow"
             >
               <AnimatePresence mode="wait">
                 {done ? (
@@ -107,14 +110,14 @@ export default function Processing() {
             </motion.div>
           </div>
 
-          <h1 className="mt-8 text-2xl font-bold text-ink">
+          <h1 className="mt-2 text-2xl font-bold leading-tight text-ink">
             {failed
               ? 'Something went wrong'
               : done
                 ? 'Analysis complete!'
                 : 'Analyzing your interview'}
           </h1>
-          <p className="mt-2 max-w-sm text-sm text-ink-muted">
+          <p className="mt-2 max-w-sm break-all text-sm leading-relaxed text-ink-muted">
             {failed
               ? failMessage || 'The pipeline could not complete. You can retry this analysis.'
               : done
@@ -222,9 +225,9 @@ export default function Processing() {
                   <p className="truncate text-xs text-ink-subtle">{step.description}</p>
                 </div>
                 {isActive && (
-                  <span className="text-xs font-semibold text-primary">Processing…</span>
+                  <span className="shrink-0 text-xs font-semibold text-primary">Processing…</span>
                 )}
-                {isDone && <span className="text-xs font-semibold text-success">Done</span>}
+                {isDone && <span className="shrink-0 text-xs font-semibold text-success">Done</span>}
               </motion.div>
             )
           })}

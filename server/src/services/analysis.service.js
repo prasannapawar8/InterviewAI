@@ -4,6 +4,7 @@ import { config } from '../config.js'
 import { newId, formatDuration } from '../utils/ids.js'
 import { enqueueAnalysis } from './queue.js'
 import { PIPELINE_STAGES } from './pipeline.stages.js'
+import { prepareTranscript } from './ai/live.js'
 
 export { PIPELINE_STAGES }
 
@@ -85,7 +86,7 @@ export function toAnalysisDoc(row) {
       overallScore: row.score,
       recommendation: null,
     },
-    transcript: result.transcript || null,
+    transcript: Array.isArray(result.transcript) ? prepareTranscript(result.transcript) : result.transcript || null,
     sentimentBreakdown: result.sentimentBreakdown || null,
     sentimentTimeline: result.sentimentTimeline || null,
     confidenceTrend: result.confidenceTrend || null,

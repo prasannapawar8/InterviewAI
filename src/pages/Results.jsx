@@ -229,7 +229,7 @@ export default function Results() {
       {/* B. Speech-to-Text */}
       <section id="transcript" className="mt-8 scroll-mt-20">
         <Card>
-          <CardHeader title="Transcript" subtitle="Full speech-to-text with timestamp markers" />
+          <CardHeader title="Transcript" subtitle="Speaker-separated turns — interviewer on the left, candidate on the right" />
           <TranscriptViewer transcript={transcript} />
         </Card>
       </section>

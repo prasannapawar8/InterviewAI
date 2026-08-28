@@ -45,6 +45,16 @@ export default function App() {
         <Route path="/invite/:token" element={<AcceptInvite />} />
       </Route>
 
+      {/* Full-screen pipeline — no sidebar/topbar under the animation */}
+      <Route
+        path="/processing"
+        element={
+          <ProtectedRoute>
+            <Processing />
+          </ProtectedRoute>
+        }
+      />
+
       {/* App (protected) */}
       <Route
         element={
@@ -55,7 +65,6 @@ export default function App() {
       >
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/upload" element={<Upload />} />
-        <Route path="/processing" element={<Processing />} />
         <Route path="/results" element={<Results />} />
         <Route path="/results/:id" element={<Results />} />
         <Route path="/settings" element={<Settings />} />
