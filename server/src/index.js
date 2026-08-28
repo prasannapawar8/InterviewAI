@@ -57,6 +57,8 @@ app.get('/api/health', async (req, res) => {
     time: new Date().toISOString(),
     db,
     aiProvider: config.aiProvider,
+    llm: config.geminiApiKey ? 'gemini' : config.openaiApiKey ? 'openai' : 'none',
+    stt: config.deepgramApiKey ? 'deepgram' : config.openaiApiKey ? 'whisper' : 'none',
   })
 })
 

@@ -34,6 +34,7 @@ export default function Processing() {
   const [activeStep, setActiveStep] = useState(0)
   const [done, setDone] = useState(false)
   const [failed, setFailed] = useState(false)
+  const [failMessage, setFailMessage] = useState('')
   const started = useRef(false)
 
   useEffect(() => {
@@ -51,7 +52,10 @@ export default function Processing() {
         setDone(true)
         setTimeout(() => navigate(`/results/${res.resultId}`, { replace: true }), 1200)
       })
-      .catch(() => setFailed(true))
+      .catch((err) => {
+        setFailMessage(err.message || '')
+        setFailed(true)
+      })
   }, [analysisId, navigate])
 
   return (
@@ -110,9 +114,9 @@ export default function Processing() {
                 ? 'Analysis complete!'
                 : 'Analyzing your interview'}
           </h1>
-          <p className="mt-2 max-w-sm truncate text-sm text-ink-muted">
+          <p className="mt-2 max-w-sm text-sm text-ink-muted">
             {failed
-              ? 'The pipeline could not complete. You can retry this analysis.'
+              ? failMessage || 'The pipeline could not complete. You can retry this analysis.'
               : done
                 ? 'Redirecting to your results…'
                 : fileName}
@@ -125,12 +129,11 @@ export default function Processing() {
                 onClick={async () => {
                   try {
                     setFailed(false)
+                    setFailMessage('')
                     setDone(false)
                     setProgress(0)
                     setActiveStep(0)
                     await analysisService.retry(analysisId)
-                    started.current = false
-                    started.current = true
                     const res = await analysisService.processInterview({
                       analysisId,
                       steps: processingSteps,
@@ -139,7 +142,8 @@ export default function Processing() {
                     })
                     setDone(true)
                     setTimeout(() => navigate(`/results/${res.resultId}`, { replace: true }), 1200)
-                  } catch {
+                  } catch (err) {
+                    setFailMessage(err.message || '')
                     setFailed(true)
                   }
                 }}

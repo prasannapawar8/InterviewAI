@@ -23,18 +23,13 @@ export async function processAnalysisJob({ analysisId }) {
   }
 
   try {
-    const total = PIPELINE_STAGES.length
-    for (let i = 0; i < total; i++) {
-      await setProgress(analysisId, { stage: PIPELINE_STAGES[i].key })
-      await sleep(STEP_MS)
-      await setProgress(analysisId, { progress: Math.round(((i + 1) / total) * 100) })
-    }
+    await setProgress(analysisId, { stage: 'upload', progress: 8, status: 'Processing', errorCode: null })
 
     const date = row.interviewDate.toISOString().slice(0, 10)
     let full
     let tokens = 0
 
-    if (config.aiProvider === 'live' && row.fileKey && (config.openaiApiKey || config.deepgramApiKey)) {
+    if (config.aiProvider === 'live' && row.fileKey && (config.openaiApiKey || config.deepgramApiKey || config.geminiApiKey)) {
       const buffer = await getObjectBuffer(row.fileKey)
       const ext = path.extname(row.fileName || '') || '.bin'
       const mime = ext.match(/mp4|mov|webm/i) ? 'video/mp4' : 'audio/mpeg'
@@ -47,12 +42,21 @@ export async function processAnalysisJob({ analysisId }) {
         buffer,
         mime,
         fileName: row.fileName,
+        onStage: async (stage, progress) => {
+          await setProgress(analysisId, { stage, progress })
+        },
       })
       tokens = Math.ceil((full.rawStt?.text || '').length / 4)
       if (full.rawStt) {
         await putJson(`transcripts/${row.orgId}/${row.id}.json`, full.rawStt)
       }
     } else {
+      const total = PIPELINE_STAGES.length
+      for (let i = 0; i < total; i++) {
+        await setProgress(analysisId, { stage: PIPELINE_STAGES[i].key })
+        await sleep(STEP_MS)
+        await setProgress(analysisId, { progress: Math.round(((i + 1) / total) * 100) })
+      }
       full = generateAnalysis({
         id: row.id,
         candidate: row.candidate,
@@ -86,9 +90,13 @@ export async function processAnalysisJob({ analysisId }) {
     logger.info('pipeline completed', { analysisId, provider: config.aiProvider })
   } catch (err) {
     logger.error('pipeline failed', { analysisId, error: err.message })
+    const quota = /429|quota/i.test(err.message)
     await prisma.analysis.update({
       where: { id: analysisId },
-      data: { status: 'Failed', errorCode: 'pipeline_error', progress: 0 },
+      data: {
+        status: 'Failed',
+        errorCode: quota ? 'openai_quota' : 'pipeline_error',
+      },
     })
     throw err
   }

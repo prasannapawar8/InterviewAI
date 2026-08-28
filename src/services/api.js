@@ -187,41 +187,23 @@ export const analysisService = {
 
   async processInterview({ analysisId, onProgress, onStep, steps }) {
     if (!analysisId) throw new Error('analysisId is required')
-
-    const poll = (async () => {
-      let last = -1
-      for (;;) {
-        await delay(900)
-        const s = await this.getStatus(analysisId)
-        if (s.status === 'Completed') return s
-        if (s.status === 'Failed') {
-          const err = new Error('Processing failed — please try again')
-          err.code = s.errorCode
-          throw err
-        }
-        if (s.progress !== last) {
-          last = s.progress
-          onProgress?.(s.progress)
-        }
+    const stageIndex = (stage) => {
+      const i = steps.findIndex((s) => s.key === stage)
+      return i < 0 ? 0 : i
+    }
+    for (;;) {
+      await delay(900)
+      const s = await this.getStatus(analysisId)
+      onStep?.(stageIndex(s.stage))
+      onProgress?.(s.progress ?? 0)
+      if (s.status === 'Completed') {
+        onProgress?.(100)
+        return { ok: true, resultId: analysisId }
       }
-    })()
-
-    const total = steps.length
-    for (let i = 0; i < total; i++) {
-      onStep?.(i)
-      const stepStart = (i / total) * 100
-      const stepEnd = ((i + 1) / total) * 100
-      const ticks = 10
-      for (let t = 1; t <= ticks; t++) {
-        await delay(55)
-        onProgress?.(Math.round(stepStart + ((stepEnd - stepStart) * t) / ticks))
+      if (s.status === 'Failed') {
+        throw new Error(s.error || 'Processing failed — please try again')
       }
     }
-    onStep?.(total - 1)
-
-    await poll
-    onProgress?.(100)
-    return { ok: true, resultId: analysisId }
   },
 
   async downloadReport(id) {

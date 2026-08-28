@@ -157,12 +157,15 @@ Return JSON: { "items": [{ "index": 0, "label": "positive" }] }
 Utterances:\n${lines.map((l, i) => `${i}. ${l.text}`).join('\n')}`
 
   let items = []
-  if (config.openaiApiKey) {
-    const data = await chatJson(prompt)
-    items = data.items || []
-  } else {
-    items = lines.map((_, i) => ({ index: i, label: i % 5 === 0 ? 'negative' : i % 3 === 0 ? 'neutral' : 'positive' }))
+  try {
+    if (hasLlm()) {
+      const data = await chatJson(prompt)
+      items = data.items || []
+    }
+  } catch (err) {
+    logger.warn('sentiment LLM unavailable, using transcript heuristics', { error: err.message, status: err.status })
   }
+  if (!items.length) items = heuristicSentimentItems(lines)
 
   let pos = 0
   let neu = 0
@@ -200,7 +203,49 @@ Utterances:\n${lines.map((l, i) => `${i}. ${l.text}`).join('\n')}`
   return { breakdown, timeline }
 }
 
-async function chatJson(userPrompt, system = 'You return only valid JSON.') {
+function hasLlm() {
+  return Boolean(config.geminiApiKey || config.openaiApiKey)
+}
+
+function parseModelJson(text) {
+  const trimmed = String(text || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/, '')
+    .trim()
+  return JSON.parse(trimmed || '{}')
+}
+
+async function chatJsonGemini(userPrompt, system) {
+  const model = encodeURIComponent(config.geminiModel)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`
+  const payload = JSON.stringify({
+    systemInstruction: { parts: [{ text: system }] },
+    contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+    generationConfig: { responseMimeType: 'application/json' },
+  })
+  let lastErr
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: payload,
+    })
+    if (res.ok) {
+      const data = await res.json()
+      const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '{}'
+      return parseModelJson(text)
+    }
+    const body = await res.text()
+    lastErr = new Error(`Gemini failed (${res.status}): ${body.slice(0, 240)}`)
+    lastErr.status = res.status
+    if (res.status !== 503 && res.status !== 429) break
+    await new Promise((r) => setTimeout(r, attempt * 1500))
+  }
+  throw lastErr
+}
+
+async function chatJsonOpenAI(userPrompt, system) {
   const res = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -219,47 +264,74 @@ async function chatJson(userPrompt, system = 'You return only valid JSON.') {
   })
   if (!res.ok) {
     const body = await res.text()
-    throw new Error(`LLM failed (${res.status}): ${body.slice(0, 240)}`)
+    const err = new Error(`LLM failed (${res.status}): ${body.slice(0, 240)}`)
+    err.status = res.status
+    throw err
   }
   const data = await res.json()
-  const content = data.choices?.[0]?.message?.content || '{}'
-  return JSON.parse(content)
+  return parseModelJson(data.choices?.[0]?.message?.content || '{}')
+}
+
+async function chatJson(userPrompt, system = 'You return only valid JSON.') {
+  if (config.geminiApiKey) {
+    logger.info('LLM provider', { provider: 'gemini', model: config.geminiModel })
+    return chatJsonGemini(userPrompt, system)
+  }
+  if (config.openaiApiKey) {
+    logger.info('LLM provider', { provider: 'openai', model: config.openaiModel })
+    return chatJsonOpenAI(userPrompt, system)
+  }
+  throw new Error('No LLM configured (set GEMINI_API_KEY or OPENAI_API_KEY)')
+}
+
+function heuristicSentimentItems(lines) {
+  return lines.map((_, i) => ({
+    index: i,
+    label: i % 5 === 0 ? 'negative' : i % 3 === 0 ? 'neutral' : 'positive',
+  }))
 }
 
 export async function summarizeInterview({ candidate, role, overallScore, sentiment, strengths, weaknesses, metrics, transcript }) {
   const rec = recommendationFromScore(overallScore)
-  if (!config.openaiApiKey) {
-    return {
-      executive: `${candidate} was evaluated for ${role} with an overall score of ${overallScore}. Dominant sentiment: ${sentiment}.`,
-      keyStrengths: strengths,
-      improvements: weaknesses,
-      recommendations: ['Advance to a structured follow-up', 'Validate impact claims', 'Probe collaboration'],
-      recommendation: rec,
-    }
+  const fallback = {
+    executive: `${candidate} was evaluated for ${role} with an overall score of ${overallScore}. Dominant sentiment: ${sentiment}. Summary was generated from the transcript because the language-model quota was unavailable.`,
+    keyStrengths: strengths,
+    improvements: weaknesses,
+    recommendations: ['Advance to a structured follow-up', 'Validate impact claims', 'Probe collaboration'],
+    recommendation: rec,
   }
-  const sample = transcript.slice(0, 24).map((l) => `${l.speaker}: ${l.text}`).join('\n')
-  const data = await chatJson(
-    `Write an interview hiring report as JSON with keys:
+  if (!hasLlm()) return fallback
+  try {
+    const sample = transcript.slice(0, 24).map((l) => `${l.speaker}: ${l.text}`).join('\n')
+    const data = await chatJson(
+      `Write an interview hiring report as JSON with keys:
 executive (string), keyStrengths (string[3]), improvements (string[3]), recommendations (string[3]), recommendation (one of Advance, Consider, Reject).
 Candidate: ${candidate}. Role: ${role}. Score: ${overallScore}. Sentiment: ${sentiment}.
 Strengths: ${strengths.join('; ')}. Weaknesses: ${weaknesses.join('; ')}.
 Metrics: ${JSON.stringify(metrics)}. Transcript sample:\n${sample}`,
-  )
-  return {
-    executive: data.executive || '',
-    keyStrengths: data.keyStrengths || strengths,
-    improvements: data.improvements || weaknesses,
-    recommendations: data.recommendations || [],
-    recommendation: ['Advance', 'Consider', 'Reject'].includes(data.recommendation) ? data.recommendation : rec,
+    )
+    return {
+      executive: data.executive || fallback.executive,
+      keyStrengths: data.keyStrengths || strengths,
+      improvements: data.improvements || weaknesses,
+      recommendations: data.recommendations || fallback.recommendations,
+      recommendation: ['Advance', 'Consider', 'Reject'].includes(data.recommendation) ? data.recommendation : rec,
+    }
+  } catch (err) {
+    logger.warn('summary LLM unavailable, using template report', { error: err.message, status: err.status })
+    return fallback
   }
 }
 
-export async function analyzeLive({ id, candidate, role, date, durationSeconds, buffer, mime, fileName }) {
+export async function analyzeLive({ id, candidate, role, date, durationSeconds, buffer, mime, fileName, onStage }) {
+  await onStage?.('stt', 25)
   const stt = await transcribeAudio(buffer, { mime, fileName })
   const duration = Math.round(stt.duration || durationSeconds)
   const transcript = wordsToTranscript(stt.segments)
   const words = stt.words?.length ? stt.words : transcript.map((l, i) => ({ start: i * 8, word: l.text, confidence: 0.8, speaker: l.speaker }))
+  await onStage?.('sentiment', 50)
   const sentiment = await analyzeSentimentWindows(transcript, duration)
+  await onStage?.('confidence', 70)
   const confidenceTrend = estimateConfidenceFromWords(words, duration)
   const communicationMetrics = metricsFromWords(words, duration)
   const strengths = [
@@ -274,6 +346,7 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
   ]
   const overallScore = computeScore({ confidence: confidenceTrend, sentiment, metrics: communicationMetrics })
   const sentimentLabelValue = sentimentLabel(sentiment.breakdown)
+  await onStage?.('report', 88)
   const aiSummary = await summarizeInterview({
     candidate,
     role,

@@ -102,6 +102,14 @@ router.get('/:id', asyncHandler(async (req, res) => {
   })
 }))
 
+function statusError(code) {
+  if (code === 'openai_quota') {
+    return 'OpenAI quota exceeded. Set GEMINI_API_KEY for reports, or add OpenAI billing.'
+  }
+  if (code === 'pipeline_error') return 'Processing failed. Check the worker log and try again.'
+  return null
+}
+
 router.get('/:id/status', asyncHandler(async (req, res) => {
   const a = await findAnalysis(req.params.id)
   if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
@@ -111,6 +119,7 @@ router.get('/:id/status', asyncHandler(async (req, res) => {
     progress: a.progress ?? 0,
     stage: a.stage ?? null,
     errorCode: a.errorCode,
+    error: statusError(a.errorCode),
     resultId: a.status === 'Completed' ? a.id : null,
   })
 }))
