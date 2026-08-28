@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   Calendar,
@@ -53,33 +53,83 @@ function SectionTitle({ tag, title, subtitle }) {
 
 export default function Results() {
   const navigate = useNavigate()
+  const { id: paramId } = useParams()
   const toast = useToast()
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
+  const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     let active = true
-    analysisService.getResult().then((res) => {
-      if (!active) return
-      setData(res)
-      setLoading(false)
-    })
+    ;(async () => {
+      try {
+        let id = paramId
+        if (!id) {
+          // No id in the URL (e.g. sidebar link) — open the most recent analysis
+          const items = await analysisService.listAnalyses(1)
+          if (!items.length) {
+            if (active) {
+              setError('No analyses yet. Upload an interview to get started.')
+              setLoading(false)
+            }
+            return
+          }
+          id = items[0].id
+          navigate(`/results/${id}`, { replace: true })
+        }
+        const res = await analysisService.getResult(id)
+        if (!active) return
+        setData(res)
+        setLoading(false)
+      } catch (err) {
+        if (!active) return
+        setError(err.message || 'Could not load this analysis')
+        setLoading(false)
+      }
+    })()
     return () => {
       active = false
     }
-  }, [])
+  }, [paramId, navigate])
 
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
 
-  const downloadPdf = () => {
+  const downloadPdf = async () => {
+    if (!data) return
     setDownloading(true)
-    setTimeout(() => {
-      setDownloading(false)
+    try {
+      const blob = await analysisService.downloadReport(data.overview.id)
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `intervai-report-${data.overview.candidate.replace(/\s+/g, '-').toLowerCase()}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
       toast.success('Report downloaded', 'Your PDF report has been generated.')
-    }, 1600)
+    } catch (err) {
+      toast.error('Download failed', err.message)
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  if (error) {
+    return (
+      <PageTransition>
+        <Card className="mx-auto max-w-md p-8 text-center">
+          <p className="text-lg font-semibold text-ink">Couldn&apos;t load this analysis</p>
+          <p className="mt-2 text-sm text-ink-muted">{error}</p>
+          <Button variant="gradient" className="mt-6" onClick={() => navigate('/dashboard')}>
+            Back to dashboard
+          </Button>
+        </Card>
+      </PageTransition>
+    )
   }
 
   if (loading || !data) {

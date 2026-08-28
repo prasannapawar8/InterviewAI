@@ -138,7 +138,7 @@ export default function Login() {
       </p>
 
       <p className="mt-4 rounded-lg bg-surface-3 px-3 py-2 text-center text-xs text-ink-subtle">
-        Demo: use any valid email & a 6+ char password.
+        Demo login: aarav.mehta@example.com / password123
       </p>
     </motion.div>
   )
