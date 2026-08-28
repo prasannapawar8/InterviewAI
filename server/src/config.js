@@ -35,7 +35,7 @@ export const config = {
   openaiApiKey: process.env.OPENAI_API_KEY || '',
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4o-mini',
   geminiApiKey: process.env.GEMINI_API_KEY || '',
-  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.7-flash',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-3.6-flash',
   deepgramApiKey: process.env.DEEPGRAM_API_KEY || '',
   s3: {
     bucket: process.env.S3_BUCKET || '',

@@ -1,7 +1,10 @@
 import { formatDuration } from '../../utils/ids.js'
 import { config } from '../../config.js'
 import { logger } from '../../logger.js'
-import { buildMetrics, computeScore, sentimentLabel, recommendationFromScore } from './score.js'
+import { buildMetrics, explainScore, sentimentLabel, recommendationFromScore } from './score.js'
+import { analyzeTurns } from './features/turns.js'
+import { detectStar } from './features/star.js'
+import { sentimentCharts } from './features/naiveBayes.js'
 
 const FILLER_RE = /\b(um+|uh+|er+|ah+|like|you know|basically|actually)\b/gi
 const INTERVIEWER_OPEN =
@@ -245,56 +248,8 @@ export async function transcribeAudio(buffer, { mime, fileName }) {
 }
 
 export async function analyzeSentimentWindows(transcript, durationSeconds) {
-  const lines = transcript.filter((l) => l.speaker === 'Candidate')
-  const prompt = `Classify sentiment of each interview candidate utterance as positive, neutral, or negative.
-Return JSON: { "items": [{ "index": 0, "label": "positive" }] }
-Utterances:\n${lines.map((l, i) => `${i}. ${l.text}`).join('\n')}`
-
-  let items = []
-  try {
-    if (hasLlm()) {
-      const data = await chatJson(prompt)
-      items = data.items || []
-    }
-  } catch (err) {
-    logger.warn('sentiment LLM unavailable, using transcript heuristics', { error: err.message, status: err.status })
-  }
-  if (!items.length) items = heuristicSentimentItems(lines)
-
-  let pos = 0
-  let neu = 0
-  let neg = 0
-  for (const it of items) {
-    const l = String(it.label).toLowerCase()
-    if (l.startsWith('pos')) pos += 1
-    else if (l.startsWith('neg')) neg += 1
-    else neu += 1
-  }
-  const total = Math.max(1, pos + neu + neg)
-  const breakdown = [
-    { name: 'Positive', value: Math.round((pos / total) * 100), color: '#10B981' },
-    { name: 'Neutral', value: Math.round((neu / total) * 100), color: '#06B6D4' },
-    { name: 'Negative', value: Math.max(0, 100 - Math.round((pos / total) * 100) - Math.round((neu / total) * 100)), color: '#EF4444' },
-  ]
-
-  const buckets = 6
-  const timeline = []
-  for (let i = 0; i < buckets; i++) {
-    const slice = items.slice(
-      Math.floor((i / buckets) * items.length),
-      Math.floor(((i + 1) / buckets) * items.length),
-    )
-    const p = slice.filter((x) => String(x.label).toLowerCase().startsWith('pos')).length
-    const n = slice.filter((x) => String(x.label).toLowerCase().startsWith('neg')).length
-    const t = Math.max(1, slice.length)
-    timeline.push({
-      time: formatDuration((durationSeconds / buckets) * i),
-      positive: Math.round((p / t) * 100),
-      negative: Math.round((n / t) * 100),
-      neutral: Math.max(0, 100 - Math.round((p / t) * 100) - Math.round((n / t) * 100)),
-    })
-  }
-  return { breakdown, timeline }
+  logger.info('sentiment provider', { provider: 'naive_bayes' })
+  return sentimentCharts(transcript, durationSeconds)
 }
 
 function hasLlm() {
@@ -311,30 +266,39 @@ function parseModelJson(text) {
 }
 
 async function chatJsonGemini(userPrompt, system) {
-  const model = encodeURIComponent(config.geminiModel)
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`
+  const models = [...new Set([
+    config.geminiModel,
+    'gemini-3.6-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.5-flash',
+  ].filter(Boolean))]
   const payload = JSON.stringify({
     systemInstruction: { parts: [{ text: system }] },
     contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
     generationConfig: { responseMimeType: 'application/json' },
   })
   let lastErr
-  for (let attempt = 1; attempt <= 3; attempt += 1) {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: payload,
-    })
-    if (res.ok) {
-      const data = await res.json()
-      const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).join('') || '{}'
-      return parseModelJson(text)
+  for (const model of models) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.geminiApiKey)}`
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+      })
+      if (res.ok) {
+        const data = await res.json()
+        const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text).filter(Boolean).join('') || '{}'
+        logger.info('LLM provider', { provider: 'gemini', model })
+        return parseModelJson(text)
+      }
+      const body = await res.text()
+      lastErr = new Error(`Gemini failed (${res.status}): ${body.slice(0, 240)}`)
+      lastErr.status = res.status
+      if (res.status === 404 || res.status === 429) break
+      if (res.status !== 503) throw lastErr
+      await new Promise((r) => setTimeout(r, attempt * 2000))
     }
-    const body = await res.text()
-    lastErr = new Error(`Gemini failed (${res.status}): ${body.slice(0, 240)}`)
-    lastErr.status = res.status
-    if (res.status !== 503 && res.status !== 429) break
-    await new Promise((r) => setTimeout(r, attempt * 1500))
   }
   throw lastErr
 }
@@ -368,7 +332,6 @@ async function chatJsonOpenAI(userPrompt, system) {
 
 async function chatJson(userPrompt, system = 'You return only valid JSON.') {
   if (config.geminiApiKey) {
-    logger.info('LLM provider', { provider: 'gemini', model: config.geminiModel })
     return chatJsonGemini(userPrompt, system)
   }
   if (config.openaiApiKey) {
@@ -378,22 +341,42 @@ async function chatJson(userPrompt, system = 'You return only valid JSON.') {
   throw new Error('No LLM configured (set GEMINI_API_KEY or OPENAI_API_KEY)')
 }
 
-function heuristicSentimentItems(lines) {
-  return lines.map((_, i) => ({
-    index: i,
-    label: i % 5 === 0 ? 'negative' : i % 3 === 0 ? 'neutral' : 'positive',
-  }))
+export function isPlaceholderSummary(executive) {
+  return /language-model quota was unavailable/i.test(String(executive || ''))
 }
 
-export async function summarizeInterview({ candidate, role, overallScore, sentiment, strengths, weaknesses, metrics, transcript }) {
+function transcriptFallbackSummary({ candidate, role, overallScore, sentiment, strengths, weaknesses, transcript }) {
   const rec = recommendationFromScore(overallScore)
-  const fallback = {
-    executive: `${candidate} was evaluated for ${role} with an overall score of ${overallScore}. Dominant sentiment: ${sentiment}. Summary was generated from the transcript because the language-model quota was unavailable.`,
+  const spoken = (transcript || [])
+    .filter((l) => l.speaker === 'Candidate')
+    .map((l) => l.text)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  const snippet = spoken.slice(0, 520)
+  const executive = snippet
+    ? `${candidate} interviewed for ${role} with an overall score of ${overallScore}/100 and ${sentiment} sentiment. Candidate remarks included: ${snippet}${spoken.length > 520 ? '…' : ''}`
+    : `${candidate} was evaluated for ${role} with an overall score of ${overallScore}/100 and ${sentiment} sentiment. Gemini was busy; this summary is based on scores and metrics only.`
+  return {
+    executive,
     keyStrengths: strengths,
     improvements: weaknesses,
     recommendations: ['Advance to a structured follow-up', 'Validate impact claims', 'Probe collaboration'],
     recommendation: rec,
   }
+}
+
+export async function summarizeInterview({ candidate, role, overallScore, sentiment, strengths, weaknesses, metrics, transcript }) {
+  const rec = recommendationFromScore(overallScore)
+  const fallback = transcriptFallbackSummary({
+    candidate,
+    role,
+    overallScore,
+    sentiment,
+    strengths,
+    weaknesses,
+    transcript,
+  })
   if (!hasLlm()) return fallback
   try {
     const sample = transcript.slice(0, 24).map((l) => `${l.speaker}: ${l.text}`).join('\n')
@@ -412,7 +395,7 @@ Metrics: ${JSON.stringify(metrics)}. Transcript sample:\n${sample}`,
       recommendation: ['Advance', 'Consider', 'Reject'].includes(data.recommendation) ? data.recommendation : rec,
     }
   } catch (err) {
-    logger.warn('summary LLM unavailable, using template report', { error: err.message, status: err.status })
+    logger.warn('summary LLM unavailable, using transcript-based report', { error: err.message, status: err.status })
     return fallback
   }
 }
@@ -428,6 +411,10 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
   await onStage?.('confidence', 70)
   const confidenceTrend = estimateConfidenceFromWords(words, duration)
   const communicationMetrics = metricsFromWords(words, duration)
+  const scoreCard = explainScore({ confidence: confidenceTrend, sentiment, metrics: communicationMetrics })
+  const overallScore = scoreCard.score
+  const talkTime = analyzeTurns(transcript)
+  const starCoverage = detectStar(transcript)
   const strengths = [
     'Evidence-backed answers drawn from the transcript',
     'Turn-taking and response structure',
@@ -438,7 +425,6 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
     'Opportunities to quantify impact more clearly',
     'Follow-up depth on weaker answers',
   ]
-  const overallScore = computeScore({ confidence: confidenceTrend, sentiment, metrics: communicationMetrics })
   const sentimentLabelValue = sentimentLabel(sentiment.breakdown)
   await onStage?.('report', 88)
   const aiSummary = await summarizeInterview({
@@ -466,6 +452,9 @@ export async function analyzeLive({ id, candidate, role, date, durationSeconds, 
     sentimentTimeline: sentiment.timeline,
     confidenceTrend,
     communicationMetrics,
+    scoreBreakdown: scoreCard.breakdown,
+    talkTime,
+    starCoverage,
     strengths,
     weaknesses,
     aiSummary,

@@ -35,7 +35,10 @@ function wrap(text, width) {
 }
 
 function buildReportLines(a) {
-  const { overview, aiSummary, communicationMetrics, sentimentBreakdown, strengths, weaknesses } = a
+  const {
+    overview, aiSummary, communicationMetrics, sentimentBreakdown, strengths, weaknesses,
+    scoreBreakdown, talkTime, starCoverage,
+  } = a
   const lines = []
   const push = (text, size = 10) => lines.push({ text, size })
 
@@ -46,6 +49,29 @@ function buildReportLines(a) {
   push(`Interview date: ${overview.date}    Duration: ${overview.duration}`, 11)
   push(`Overall score: ${overview.overallScore}/100    Recommendation: ${overview.recommendation}`, 11)
   push('')
+  if (scoreBreakdown?.length) {
+    push('SCORE BREAKDOWN (in-house weights)', 11)
+    for (const p of scoreBreakdown) {
+      push(`  ${p.label}: raw ${p.raw}${p.unit === '%' ? '%' : ''}  weight ${Math.round(p.weight * 100)}%  contrib ${p.contribution}`)
+      push(`    ${p.reason}`)
+    }
+    push('')
+  }
+  if (talkTime) {
+    push('TALK TIME (from speaker turns)', 11)
+    push(`  Candidate: ${talkTime.candidateTalkPct}% (${talkTime.candidateWords} words)`)
+    push(`  Interviewer: ${talkTime.interviewerTalkPct}% (${talkTime.interviewerWords} words)`)
+    push(`  Unanswered questions: ${talkTime.unansweredCount}`)
+    push('')
+  }
+  if (starCoverage) {
+    push('STAR ANSWER STRUCTURE (rule-based)', 11)
+    push(`  Coverage: ${starCoverage.found}/${starCoverage.total}`)
+    for (const l of starCoverage.letters || []) {
+      push(`  ${l.letter} ${l.name}: ${l.present ? 'found' : 'missing'}`)
+    }
+    push('')
+  }
   push('SENTIMENT DISTRIBUTION', 11)
   for (const b of sentimentBreakdown) push(`  ${b.name}: ${b.value}%`)
   push('')

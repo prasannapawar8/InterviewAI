@@ -29,16 +29,20 @@ import TranscriptViewer from '../components/results/TranscriptViewer'
 import MetricTile from '../components/results/MetricTile'
 import { analysisService } from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../utils/format'
 import { cn } from '../utils/cn'
 
 const SECTIONS = [
   { id: 'overview', label: 'Overview' },
+  { id: 'score', label: 'Score' },
+  { id: 'structure', label: 'Structure' },
   { id: 'transcript', label: 'Transcript' },
   { id: 'sentiment', label: 'Sentiment' },
   { id: 'confidence', label: 'Confidence' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'summary', label: 'AI Summary' },
+  { id: 'decision', label: 'Decision' },
 ]
 
 function SectionTitle({ tag, title, subtitle }) {
@@ -55,32 +59,29 @@ export default function Results() {
   const navigate = useNavigate()
   const { id: paramId } = useParams()
   const toast = useToast()
+  const { user } = useAuth()
+  const canReview = ['owner', 'admin', 'recruiter'].includes(user?.membershipRole)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
   const [downloading, setDownloading] = useState(false)
+  const [decision, setDecision] = useState('')
+  const [notes, setNotes] = useState('')
+  const [savingReview, setSavingReview] = useState(false)
 
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
-        let id = paramId
-        if (!id) {
-          // No id in the URL (e.g. sidebar link) — open the most recent analysis
-          const items = await analysisService.listAnalyses(1)
-          if (!items.length) {
-            if (active) {
-              setError('No analyses yet. Upload an interview to get started.')
-              setLoading(false)
-            }
-            return
-          }
-          id = items[0].id
-          navigate(`/results/${id}`, { replace: true })
+        if (!paramId) {
+          navigate('/results', { replace: true })
+          return
         }
-        const res = await analysisService.getResult(id)
+        const res = await analysisService.getResult(paramId)
         if (!active) return
         setData(res)
+        setDecision(res.decision || '')
+        setNotes(res.notes || '')
         setLoading(false)
       } catch (err) {
         if (!active) return
@@ -118,6 +119,53 @@ export default function Results() {
     }
   }
 
+  const saveReview = async () => {
+    if (!data) return
+    setSavingReview(true)
+    try {
+      const saved = await analysisService.updateReview(data.overview.id, { decision, notes })
+      setData((d) => ({ ...d, decision: saved.decision, notes: saved.notes }))
+      toast.success('Decision saved', 'Recruiter notes are stored on this analysis.')
+    } catch (err) {
+      toast.error('Could not save', err.message)
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  const downloadOneCsv = () => {
+    if (!data) return
+    const pace = data.communicationMetrics?.find((m) => m.key === 'pace')?.value ?? ''
+    const fillers = data.communicationMetrics?.find((m) => m.key === 'fillers')?.value ?? ''
+    const star = data.starCoverage ? `${data.starCoverage.found}/${data.starCoverage.total}` : ''
+    const talk = data.talkTime?.candidateTalkPct ?? ''
+    const rec = data.decision || data.overview?.recommendation || ''
+    const header = 'id,candidate,role,date,score,sentiment,recommendation,decision,candidateTalkPct,star,pace,fillers'
+    const row = [
+      data.overview.id,
+      data.overview.candidate,
+      data.overview.role,
+      data.overview.date,
+      data.overview.overallScore,
+      data.sentiment,
+      rec,
+      data.decision || '',
+      talk,
+      star,
+      pace,
+      fillers,
+    ]
+      .map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`)
+      .join(',')
+    const blob = new Blob([`${header}\n${row}\n`], { type: 'text/csv' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `intervai-${data.overview.candidate.replace(/\s+/g, '-').toLowerCase()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (error) {
     return (
       <PageTransition>
@@ -145,7 +193,20 @@ export default function Results() {
     )
   }
 
-  const { overview, transcript, sentimentBreakdown, sentimentTimeline, confidenceTrend, communicationMetrics, strengths, weaknesses, aiSummary } = data
+  const {
+    overview,
+    transcript,
+    sentimentBreakdown,
+    sentimentTimeline,
+    confidenceTrend,
+    communicationMetrics,
+    scoreBreakdown,
+    talkTime,
+    starCoverage,
+    strengths,
+    weaknesses,
+    aiSummary,
+  } = data
   const avgConfidence = Math.round(
     confidenceTrend.reduce((s, p) => s + p.confidence, 0) / confidenceTrend.length,
   )
@@ -155,10 +216,10 @@ export default function Results() {
       {/* Back + section nav */}
       <div className="mb-6 flex flex-col gap-4">
         <button
-          onClick={() => navigate('/dashboard')}
+          onClick={() => navigate('/results')}
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
         >
-          <ChevronLeft className="h-4 w-4" /> Back to dashboard
+          <ChevronLeft className="h-4 w-4" /> Back to analyses
         </button>
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
           {SECTIONS.map((s) => (
@@ -200,6 +261,13 @@ export default function Results() {
                 >
                   <Download className="h-4 w-4" /> {downloading ? 'Generating…' : 'Download PDF'}
                 </Button>
+                <Button
+                  variant="outline"
+                  className="border-white/40 bg-white/10 text-white hover:bg-white/20"
+                  onClick={downloadOneCsv}
+                >
+                  CSV
+                </Button>
               </div>
             </div>
           </div>
@@ -226,6 +294,100 @@ export default function Results() {
         </Card>
       </section>
 
+      {scoreBreakdown?.length ? (
+        <section id="score" className="mt-8 scroll-mt-20">
+          <SectionTitle
+            tag="In-house scoring"
+            title="Explainable score"
+            subtitle="Weighted formula we designed — not an API score"
+          />
+          <Card>
+            <div className="space-y-4">
+              {scoreBreakdown.map((p) => (
+                <div key={p.key}>
+                  <div className="flex items-center justify-between gap-3 text-sm">
+                    <span className="font-semibold text-ink">{p.label}</span>
+                    <span className="tabular-nums text-ink-muted">
+                      {p.contribution} pts · {Math.round(p.weight * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-surface-3">
+                    <div
+                      className="h-full rounded-full bg-brand-gradient"
+                      style={{ width: `${Math.min(100, (p.contribution / (p.weight * 100)) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-ink-subtle">{p.reason}</p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        </section>
+      ) : null}
+
+      {(talkTime || starCoverage) && (
+        <section id="structure" className="mt-8 scroll-mt-20">
+          <SectionTitle
+            tag="In-house NLP"
+            title="Interview structure"
+            subtitle="Talk-time, unanswered questions, and STAR cues from the transcript"
+          />
+          <div className="grid gap-5 lg:grid-cols-2">
+            {talkTime && (
+              <Card>
+                <CardHeader title="Talk time" subtitle="Word share by speaker role" />
+                <div className="mt-2 flex h-3 overflow-hidden rounded-full bg-surface-3">
+                  <div className="bg-secondary" style={{ width: `${talkTime.candidateTalkPct}%` }} />
+                  <div className="bg-accent" style={{ width: `${talkTime.interviewerTalkPct}%` }} />
+                </div>
+                <p className="mt-3 text-sm text-ink-muted">
+                  Candidate {talkTime.candidateTalkPct}% ({talkTime.candidateWords} words) · Interviewer{' '}
+                  {talkTime.interviewerTalkPct}% ({talkTime.interviewerWords} words)
+                </p>
+                <p className="mt-4 text-sm font-semibold text-ink">
+                  Unanswered questions: {talkTime.unansweredCount}
+                </p>
+                <ul className="mt-2 max-h-40 space-y-2 overflow-y-auto">
+                  {(talkTime.unansweredQuestions || []).slice(0, 6).map((q, i) => (
+                    <li key={i} className="text-xs text-ink-muted">
+                      <span className="font-mono text-ink-subtle">{q.time}</span> {q.question}
+                    </li>
+                  ))}
+                  {talkTime.unansweredCount === 0 && (
+                    <li className="text-xs text-ink-subtle">Every interviewer question had a substantial reply.</li>
+                  )}
+                </ul>
+              </Card>
+            )}
+            {starCoverage && (
+              <Card>
+                <CardHeader
+                  title="STAR coverage"
+                  subtitle={`${starCoverage.found} of ${starCoverage.total} elements found in candidate answers`}
+                />
+                <ul className="mt-2 space-y-3">
+                  {(starCoverage.letters || []).map((l) => (
+                    <li key={l.letter} className="flex items-start gap-3 text-sm">
+                      {l.present ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                      ) : (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                      )}
+                      <span>
+                        <span className="font-semibold text-ink">
+                          {l.letter} — {l.name}
+                        </span>
+                        <span className="text-ink-muted"> {l.present ? 'detected' : 'not detected'}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+          </div>
+        </section>
+      )}
+
       {/* B. Speech-to-Text */}
       <section id="transcript" className="mt-8 scroll-mt-20">
         <Card>
@@ -236,7 +398,7 @@ export default function Results() {
 
       {/* C. Sentiment Analysis */}
       <section id="sentiment" className="mt-8 scroll-mt-20">
-        <SectionTitle tag="Section C" title="Sentiment Analysis" subtitle="Emotional tone across the interview" />
+        <SectionTitle tag="Section C" title="Sentiment Analysis" subtitle="Multinomial Naive Bayes on candidate turns — trained in-house, not an API" />
         <div className="grid gap-5 lg:grid-cols-2">
           <Card>
             <CardHeader title="Sentiment Distribution" />
@@ -383,6 +545,58 @@ export default function Results() {
               {downloading ? 'Generating…' : 'Download PDF Report'}
             </Button>
           </div>
+        </Card>
+      </section>
+
+      <section id="decision" className="mt-8 scroll-mt-20">
+        <SectionTitle
+          tag="Recruiter"
+          title="Hiring decision"
+          subtitle="Human override stored on this analysis — not generated by an API"
+        />
+        <Card>
+          {!canReview ? (
+            <p className="text-sm text-ink-muted">
+              Decision: {data.decision || 'Not set'}. Notes are only editable by recruiters.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2">
+                {['Advance', 'Consider', 'Reject'].map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    onClick={() => setDecision(opt)}
+                    className={cn(
+                      'rounded-full border px-4 py-1.5 text-sm font-semibold',
+                      decision === opt
+                        ? 'border-primary bg-primary/10 text-primary'
+                        : 'border-line text-ink-muted hover:text-ink',
+                    )}
+                  >
+                    {opt}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="text-sm text-ink-subtle hover:text-ink"
+                  onClick={() => setDecision('')}
+                >
+                  Clear
+                </button>
+              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={4}
+                placeholder="Private notes for your team…"
+                className="mt-4 w-full rounded-xl border border-line bg-surface-2 p-3 text-sm text-ink focus-ring"
+              />
+              <Button className="mt-4" variant="gradient" onClick={saveReview} loading={savingReview}>
+                Save decision
+              </Button>
+            </>
+          )}
         </Card>
       </section>
     </PageTransition>

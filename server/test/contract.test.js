@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { generateAnalysis } from '../src/services/ai/engine.js'
-import { computeScore, buildMetrics, sentimentLabel, recommendationFromScore } from '../src/services/ai/score.js'
+import { computeScore, explainScore, buildMetrics, sentimentLabel, recommendationFromScore } from '../src/services/ai/score.js'
 import { wordsToTranscript, estimateConfidenceFromWords, metricsFromWords, prepareTranscript, assignDiarizedRoles } from '../src/services/ai/live.js'
+import { analyzeTurns } from '../src/services/ai/features/turns.js'
+import { detectStar } from '../src/services/ai/features/star.js'
+import { predictSentiment, sentimentModel } from '../src/services/ai/features/naiveBayes.js'
 
 const REQUIRED_KEYS = [
   'overview',
@@ -16,6 +19,9 @@ const REQUIRED_KEYS = [
   'aiSummary',
   'score',
   'sentiment',
+  'scoreBreakdown',
+  'talkTime',
+  'starCoverage',
 ]
 
 describe('analysis result contract', () => {
@@ -53,6 +59,10 @@ describe('analysis result contract', () => {
     const a = computeScore({ confidence, sentiment, metrics })
     const b = computeScore({ confidence, sentiment, metrics })
     assert.equal(a, b)
+    const explained = explainScore({ confidence, sentiment, metrics })
+    assert.equal(explained.score, a)
+    assert.equal(explained.breakdown.length, 5)
+    assert.ok(explained.breakdown.every((p) => p.reason && typeof p.contribution === 'number'))
     assert.equal(sentimentLabel(sentiment.breakdown), 'Positive')
     assert.equal(recommendationFromScore(90), 'Advance')
   })
@@ -87,5 +97,28 @@ describe('analysis result contract', () => {
       metrics.map((m) => m.key).sort(),
       ['clarity', 'engagement', 'fillers', 'pace'].sort(),
     )
+    const turns = analyzeTurns([
+      { speaker: 'Interviewer', time: '00:01', text: 'How did you measure success?' },
+      { speaker: 'Candidate', time: '00:08', text: 'Yes.' },
+      { speaker: 'Interviewer', time: '00:12', text: 'Tell me about a project you are proud of?' },
+      {
+        speaker: 'Candidate',
+        time: '00:20',
+        text: 'When I joined the team I was responsible for checkout. I implemented a rewrite and as a result we improved conversion 34 percent.',
+      },
+    ])
+    assert.equal(turns.unansweredCount, 1)
+    assert.ok(turns.candidateTalkPct > 0)
+    const star = detectStar([
+      {
+        speaker: 'Candidate',
+        text: 'When I joined the company I was tasked to cut latency. I implemented caching. As a result p95 dropped 40 percent.',
+      },
+    ])
+    assert.equal(star.found, 4)
+    assert.equal(star.missing.length, 0)
+    assert.equal(predictSentiment('We exceeded the goal and the metrics looked fantastic.', sentimentModel).label, 'positive')
+    assert.equal(predictSentiment('The launch failed and we had to roll everything back.', sentimentModel).label, 'negative')
+    assert.equal(predictSentiment('I have around six years of experience in backend systems.', sentimentModel).label, 'neutral')
   })
 })

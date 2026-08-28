@@ -16,6 +16,8 @@ import Dashboard from './pages/Dashboard'
 import Upload from './pages/Upload'
 import Processing from './pages/Processing'
 import Results from './pages/Results'
+import Compare from './pages/Compare'
+import AnalysesList from './pages/AnalysesList'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
@@ -65,8 +67,9 @@ export default function App() {
       >
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/upload" element={<Upload />} />
-        <Route path="/results" element={<Results />} />
+        <Route path="/results" element={<AnalysesList />} />
         <Route path="/results/:id" element={<Results />} />
+        <Route path="/compare" element={<Compare />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 

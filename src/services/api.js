@@ -163,9 +163,33 @@ export const analysisService = {
     return request(`/analyses/${id}`)
   },
 
-  async listAnalyses(limit = 20) {
-    const data = await request(`/analyses${limit ? `?limit=${limit}` : ''}`)
+  async listAnalyses(limit = 20, filters = {}) {
+    const params = new URLSearchParams()
+    if (limit) params.set('limit', String(limit))
+    if (filters.q) params.set('q', filters.q)
+    if (filters.status) params.set('status', filters.status)
+    if (filters.recommendation) params.set('recommendation', filters.recommendation)
+    if (filters.minScore !== undefined && filters.minScore !== '') params.set('minScore', String(filters.minScore))
+    if (filters.maxScore !== undefined && filters.maxScore !== '') params.set('maxScore', String(filters.maxScore))
+    const data = await request(`/analyses?${params}`)
     return data.items
+  },
+
+  updateReview(id, { decision, notes }) {
+    return request(`/analyses/${id}`, { method: 'PATCH', body: { decision, notes } })
+  },
+
+  async downloadCsv(filters = {}) {
+    const params = new URLSearchParams()
+    params.set('limit', String(filters.limit || 200))
+    if (filters.q) params.set('q', filters.q)
+    if (filters.status) params.set('status', filters.status)
+    if (filters.recommendation) params.set('recommendation', filters.recommendation)
+    if (filters.minScore !== undefined && filters.minScore !== '') params.set('minScore', String(filters.minScore))
+    if (filters.maxScore !== undefined && filters.maxScore !== '') params.set('maxScore', String(filters.maxScore))
+    const res = await request(`/analyses/export.csv?${params}`)
+    if (res instanceof Response) return res.blob()
+    throw new Error('Unexpected CSV response')
   },
 
   async upload(file, { onProgress, candidate, role, candidateConsent } = {}) {
@@ -207,20 +231,8 @@ export const analysisService = {
   },
 
   async downloadReport(id) {
-    const res = await fetch(`${API_URL}/analyses/${id}/report.pdf`, {
-      credentials: 'include',
-      headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {},
-    })
-    if (!res.ok) {
-      let message = `Download failed (${res.status})`
-      try {
-        const data = await res.json()
-        if (data.error) message = data.error
-      } catch {
-        /* not JSON */
-      }
-      throw new Error(message)
-    }
-    return res.blob()
+    const res = await request(`/analyses/${id}/report.pdf`)
+    if (res instanceof Response) return res.blob()
+    throw new Error('Unexpected response while downloading the report')
   },
 }

@@ -8,6 +8,7 @@ import {
   LogOut,
   X,
   Sparkles,
+  Columns2,
 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import Button from '../components/ui/Button'
@@ -18,6 +19,7 @@ const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/upload', label: 'Upload Interview', icon: UploadCloud },
   { to: '/results', label: 'Analysis Results', icon: FileBarChart2 },
+  { to: '/compare', label: 'Compare', icon: Columns2 },
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 

@@ -42,6 +42,13 @@ export default function Topbar({ onMenuClick }) {
         <input
           type="search"
           placeholder="Search interviews, candidates…"
+          defaultValue=""
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const v = e.currentTarget.value.trim()
+              navigate(v ? `/results?q=${encodeURIComponent(v)}` : '/results')
+            }
+          }}
           className="h-10 w-full rounded-xl border border-line bg-surface-2 pl-11 pr-4 text-sm text-ink placeholder:text-ink-subtle focus-ring"
         />
       </div>

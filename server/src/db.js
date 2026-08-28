@@ -156,6 +156,12 @@ export function toPublicUser(user, { org, membershipRole } = {}) {
 
 export function toListRow(a) {
   const overview = a.result?.overview || {}
+  const talk = a.result?.talkTime || {}
+  const star = a.result?.starCoverage || {}
+  const metrics = a.result?.communicationMetrics || []
+  const pace = metrics.find((m) => m.key === 'pace')?.value
+  const fillers = metrics.find((m) => m.key === 'fillers')?.value
+  const recommendation = a.decision || overview.recommendation || null
   return {
     id: a.id,
     candidate: overview.candidate || a.candidate,
@@ -165,12 +171,53 @@ export function toListRow(a) {
     score: a.score,
     sentiment: a.sentiment,
     status: a.status,
+    decision: a.decision || null,
+    recommendation,
+    candidateTalkPct: talk.candidateTalkPct ?? null,
+    starFound: star.found ?? null,
+    starTotal: star.total ?? 4,
+    pace: pace ?? null,
+    fillers: fillers ?? null,
   }
 }
 
-export async function listAnalyses(orgId, { limit } = {}) {
+export async function listAnalyses(orgId, { limit, q, status, recommendation, minScore, maxScore } = {}) {
+  const where = { orgId }
+  const and = []
+  if (q && String(q).trim()) {
+    const term = String(q).trim()
+    and.push({
+      OR: [
+        { candidate: { contains: term, mode: 'insensitive' } },
+        { role: { contains: term, mode: 'insensitive' } },
+      ],
+    })
+  }
+  if (status && ['Processing', 'Completed', 'Failed'].includes(status)) {
+    and.push({ status })
+  }
+  if (minScore != null && minScore !== '') {
+    and.push({ score: { gte: Number(minScore) } })
+  }
+  if (maxScore != null && maxScore !== '') {
+    and.push({ score: { lte: Number(maxScore) } })
+  }
+  if (recommendation && ['Advance', 'Consider', 'Reject'].includes(recommendation)) {
+    and.push({
+      OR: [
+        { decision: recommendation },
+        {
+          AND: [
+            { decision: null },
+            { result: { path: ['overview', 'recommendation'], equals: recommendation } },
+          ],
+        },
+      ],
+    })
+  }
+  if (and.length) where.AND = and
   return prisma.analysis.findMany({
-    where: { orgId },
+    where,
     orderBy: { createdAt: 'desc' },
     take: limit,
   })

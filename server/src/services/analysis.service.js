@@ -4,7 +4,10 @@ import { config } from '../config.js'
 import { newId, formatDuration } from '../utils/ids.js'
 import { enqueueAnalysis } from './queue.js'
 import { PIPELINE_STAGES } from './pipeline.stages.js'
-import { prepareTranscript } from './ai/live.js'
+import { prepareTranscript, summarizeInterview, isPlaceholderSummary } from './ai/live.js'
+import { analyzeTurns } from './ai/features/turns.js'
+import { detectStar } from './ai/features/star.js'
+import { explainScore } from './ai/score.js'
 
 export { PIPELINE_STAGES }
 
@@ -66,6 +69,17 @@ export async function createAnalysisJob({
 export function toAnalysisDoc(row) {
   const result = row.result || {}
   const date = row.interviewDate.toISOString().slice(0, 10)
+  const transcript = Array.isArray(result.transcript) ? prepareTranscript(result.transcript) : result.transcript || null
+  const talkTime = result.talkTime || (Array.isArray(transcript) ? analyzeTurns(transcript) : null)
+  const starCoverage = result.starCoverage || (Array.isArray(transcript) ? detectStar(transcript) : null)
+  let scoreBreakdown = result.scoreBreakdown || null
+  if (!scoreBreakdown && result.confidenceTrend && result.sentimentBreakdown && result.communicationMetrics) {
+    scoreBreakdown = explainScore({
+      confidence: result.confidenceTrend,
+      sentiment: { breakdown: result.sentimentBreakdown },
+      metrics: result.communicationMetrics,
+    }).breakdown
+  }
   return {
     id: row.id,
     orgId: row.orgId,
@@ -86,17 +100,38 @@ export function toAnalysisDoc(row) {
       overallScore: row.score,
       recommendation: null,
     },
-    transcript: Array.isArray(result.transcript) ? prepareTranscript(result.transcript) : result.transcript || null,
+    transcript,
     sentimentBreakdown: result.sentimentBreakdown || null,
     sentimentTimeline: result.sentimentTimeline || null,
     confidenceTrend: result.confidenceTrend || null,
     communicationMetrics: result.communicationMetrics || null,
+    scoreBreakdown,
+    talkTime,
+    starCoverage,
     strengths: result.strengths || null,
     weaknesses: result.weaknesses || null,
     aiSummary: result.aiSummary || null,
     score: row.score,
     sentiment: row.sentiment,
+    decision: row.decision || null,
+    notes: row.notes || '',
   }
+}
+
+export async function updateAnalysisReview(id, { decision, notes }) {
+  const data = {}
+  if (decision !== undefined) {
+    const allowed = ['Advance', 'Consider', 'Reject', '']
+    if (!allowed.includes(decision) && decision !== null) {
+      const err = new Error('Decision must be Advance, Consider, Reject, or empty')
+      err.status = 400
+      throw err
+    }
+    data.decision = decision || null
+  }
+  if (notes !== undefined) data.notes = String(notes).slice(0, 4000)
+  if (!Object.keys(data).length) return prisma.analysis.findUnique({ where: { id } })
+  return prisma.analysis.update({ where: { id }, data })
 }
 
 export async function retryAnalysis(id) {
@@ -105,4 +140,29 @@ export async function retryAnalysis(id) {
     data: { status: 'Processing', progress: 0, stage: 'upload', errorCode: null },
   })
   await enqueueAnalysis({ analysisId: id })
+}
+
+/** If the stored PDF summary is the Gemini-unavailable placeholder, try Gemini again and persist. */
+export async function ensureLiveSummary(row) {
+  const doc = toAnalysisDoc(row)
+  if (!doc.aiSummary || !isPlaceholderSummary(doc.aiSummary.executive)) return row
+  const aiSummary = await summarizeInterview({
+    candidate: row.candidate,
+    role: row.role,
+    overallScore: row.score ?? doc.overview?.overallScore,
+    sentiment: row.sentiment || 'Neutral',
+    strengths: doc.strengths || [],
+    weaknesses: doc.weaknesses || [],
+    metrics: doc.communicationMetrics || [],
+    transcript: doc.transcript || [],
+  })
+  const result = {
+    ...(row.result && typeof row.result === 'object' ? row.result : {}),
+    aiSummary,
+    overview: { ...(doc.overview || {}), recommendation: aiSummary.recommendation },
+  }
+  return prisma.analysis.update({
+    where: { id: row.id },
+    data: { result },
+  })
 }

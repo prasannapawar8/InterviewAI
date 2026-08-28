@@ -7,8 +7,9 @@ import { config } from '../config.js'
 import { findAnalysis, listAnalyses, toListRow } from '../db.js'
 import { requireAuth, requireRecruiter } from '../middleware/auth.js'
 import { apiError, asyncHandler } from '../middleware/errors.js'
-import { createAnalysisJob, retryAnalysis, toAnalysisDoc } from '../services/analysis.service.js'
+import { createAnalysisJob, retryAnalysis, toAnalysisDoc, ensureLiveSummary, updateAnalysisReview } from '../services/analysis.service.js'
 import { renderReportPdf } from '../utils/pdf.js'
+import { analysesToCsv } from '../utils/csv.js'
 import { newId } from '../utils/ids.js'
 import { putObject } from '../services/storage.js'
 import { assertCanStartJob } from '../services/usage.service.js'
@@ -27,10 +28,31 @@ const upload = multer({
   },
 })
 
-router.get('/', asyncHandler(async (req, res) => {
+function listQuery(req) {
   const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20))
-  const items = (await listAnalyses(req.orgId, { limit })).map(toListRow)
+  return {
+    limit,
+    q: req.query.q,
+    status: req.query.status,
+    recommendation: req.query.recommendation,
+    minScore: req.query.minScore,
+    maxScore: req.query.maxScore,
+  }
+}
+
+router.get('/', asyncHandler(async (req, res) => {
+  const opts = listQuery(req)
+  const items = (await listAnalyses(req.orgId, opts)).map(toListRow)
   res.json({ items, total: items.length })
+}))
+
+router.get('/export.csv', asyncHandler(async (req, res) => {
+  const opts = { ...listQuery(req), limit: Math.min(500, Number(req.query.limit) || 200) }
+  const items = (await listAnalyses(req.orgId, opts)).map(toListRow)
+  const csv = analysesToCsv(items)
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader('Content-Disposition', 'attachment; filename="intervai-analyses.csv"')
+  res.send(csv)
 }))
 
 router.post(
@@ -94,13 +116,38 @@ router.get('/:id', asyncHandler(async (req, res) => {
   const doc = toAnalysisDoc(a)
   const {
     overview, transcript, sentimentBreakdown, sentimentTimeline, confidenceTrend,
-    communicationMetrics, strengths, weaknesses, aiSummary,
+    communicationMetrics, scoreBreakdown, talkTime, starCoverage, strengths, weaknesses, aiSummary,
   } = doc
   res.json({
-    overview, transcript, sentimentBreakdown, sentimentTimeline, confidenceTrend,
-    communicationMetrics, strengths, weaknesses, aiSummary, status: a.status,
+    overview: { ...overview, id: a.id },
+    transcript, sentimentBreakdown, sentimentTimeline, confidenceTrend,
+    communicationMetrics, scoreBreakdown, talkTime, starCoverage, strengths, weaknesses, aiSummary,
+    status: a.status,
+    decision: doc.decision,
+    notes: doc.notes,
+    sentiment: doc.sentiment,
   })
 }))
+
+router.patch(
+  '/:id',
+  requireRecruiter,
+  asyncHandler(async (req, res) => {
+    const a = await findAnalysis(req.params.id)
+    if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
+    try {
+      const updated = await updateAnalysisReview(a.id, {
+        decision: req.body?.decision,
+        notes: req.body?.notes,
+      })
+      const doc = toAnalysisDoc(updated)
+      res.json({ id: doc.id, decision: doc.decision, notes: doc.notes })
+    } catch (err) {
+      if (err.status === 400) return apiError(res, 400, err.message)
+      throw err
+    }
+  }),
+)
 
 function statusError(code) {
   if (code === 'openai_quota') {
@@ -138,9 +185,10 @@ router.post(
 )
 
 router.get('/:id/report.pdf', asyncHandler(async (req, res) => {
-  const a = await findAnalysis(req.params.id)
+  let a = await findAnalysis(req.params.id)
   if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
   if (a.status !== 'Completed') return apiError(res, 409, 'Report not ready yet')
+  a = await ensureLiveSummary(a)
   const pdf = renderReportPdf(toAnalysisDoc(a))
   const safe = (a.candidate || 'candidate').replace(/[^a-z0-9]+/gi, '-').toLowerCase()
   res.setHeader('Content-Type', 'application/pdf')

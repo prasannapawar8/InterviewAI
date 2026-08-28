@@ -100,6 +100,8 @@ model Analysis {
   score            Int?
   sentiment        String?
   result           Json?
+  decision         String?
+  notes            String?
   createdAt        DateTime       @default(now())
   mediaExpiresAt   DateTime?
   org              Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)

@@ -22,7 +22,10 @@
    ============================================================ */
 
 import { formatDuration, hashString } from '../../utils/ids.js'
-import { computeScore, sentimentLabel } from './score.js'
+import { explainScore, sentimentLabel } from './score.js'
+import { analyzeTurns } from './features/turns.js'
+import { detectStar } from './features/star.js'
+import { sentimentCharts } from './features/naiveBayes.js'
 
 /* ------------------------- Seeded RNG ------------------------- */
 
@@ -284,12 +287,15 @@ export function generateAnalysis(input) {
 
   const seed = `${id}:${candidate}:${role}`
   const transcript = generateTranscript(seed)
-  const sentiment = generateSentiment(seed, { durationSeconds })
+  const sentiment = sentimentCharts(transcript, durationSeconds)
   const confidence = generateConfidence(seed, { durationSeconds })
   const communicationMetrics = generateMetrics(seed)
   const strengths = generateStrengths(seed)
   const weaknesses = generateWeaknesses(seed)
-  const overallScore = computeScore({ confidence, sentiment, metrics: communicationMetrics })
+  const scoreCard = explainScore({ confidence, sentiment, metrics: communicationMetrics })
+  const overallScore = scoreCard.score
+  const talkTime = analyzeTurns(transcript)
+  const starCoverage = detectStar(transcript)
   const sentimentLabelValue = sentimentLabel(sentiment.breakdown)
   const aiSummary = generateSummary(seed, {
     candidate,
@@ -316,6 +322,9 @@ export function generateAnalysis(input) {
     sentimentTimeline: sentiment.timeline,
     confidenceTrend: confidence,
     communicationMetrics,
+    scoreBreakdown: scoreCard.breakdown,
+    talkTime,
+    starCoverage,
     strengths,
     weaknesses,
     aiSummary,
