@@ -10,6 +10,7 @@ import {
   Columns2,
   Users,
   Archive,
+  ClipboardList,
 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import Button from '../components/ui/Button'
@@ -23,6 +24,7 @@ const NAV = [
   { to: '/results?archived=1', label: 'Archive', icon: Archive, kind: 'archive' },
   { to: '/compare', label: 'Compare', icon: Columns2, end: true },
   { to: '/candidates', label: 'Candidates', icon: Users },
+  { to: '/templates', label: 'Role templates', icon: ClipboardList, end: true },
   { to: '/settings', label: 'Settings', icon: Settings, end: true },
 ]
 

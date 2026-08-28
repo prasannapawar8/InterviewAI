@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
@@ -17,7 +17,7 @@ import Button from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import ProgressBar from '../components/ui/ProgressBar'
 import { useToast } from '../context/ToastContext'
-import { analysisService } from '../services/api'
+import { analysisService, templateService } from '../services/api'
 import { formatBytes } from '../utils/format'
 import { cn } from '../utils/cn'
 
@@ -39,6 +39,12 @@ export default function Upload() {
   const [candidate, setCandidate] = useState('')
   const [role, setRole] = useState('')
   const [questionPack, setQuestionPack] = useState('')
+  const [templates, setTemplates] = useState([])
+  const [templateId, setTemplateId] = useState('')
+
+  useEffect(() => {
+    templateService.list().then(setTemplates).catch(() => {})
+  }, [])
 
   const isVideo = file?.type.startsWith('video/')
 
@@ -53,6 +59,7 @@ export default function Upload() {
           candidate,
           role,
           questionPack,
+          templateId,
         })
         setAnalysisId(res.id)
         setUploaded(true)
@@ -65,7 +72,7 @@ export default function Upload() {
         setUploaded(false)
       }
     },
-    [toast, candidate, role, questionPack],
+    [toast, candidate, role, questionPack, templateId],
   )
 
   const handleFile = useCallback(
@@ -136,6 +143,27 @@ export default function Upload() {
                   className="h-10 rounded-xl border border-line bg-surface px-3 text-sm focus-ring"
                 />
               </div>
+              <select
+                value={templateId}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setTemplateId(id)
+                  const t = templates.find((x) => x.id === id)
+                  if (t) {
+                    if (t.roleTitle) setRole(t.roleTitle)
+                    if (t.questionPack) setQuestionPack(t.questionPack)
+                  }
+                }}
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm focus-ring"
+              >
+                <option value="">No role template</option>
+                {templates.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                    {t.roleTitle ? ` — ${t.roleTitle}` : ''}
+                  </option>
+                ))}
+              </select>
               <textarea
                 value={questionPack}
                 onChange={(e) => setQuestionPack(e.target.value)}

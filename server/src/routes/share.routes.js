@@ -30,6 +30,8 @@ router.get('/:token', asyncHandler(async (req, res) => {
     decision: doc.decision,
     sentiment: doc.sentiment,
     packCoverage: doc.packCoverage,
+    scorecard: doc.scorecard,
+    scorecardAverage: doc.scorecardAverage,
     readOnly: true,
   })
 }))

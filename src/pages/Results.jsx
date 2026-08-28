@@ -29,7 +29,7 @@ import ConfidenceGauge from '../components/charts/ConfidenceGauge'
 import ConfidenceTrend from '../components/charts/ConfidenceTrend'
 import TranscriptViewer from '../components/results/TranscriptViewer'
 import MetricTile from '../components/results/MetricTile'
-import { analysisService } from '../services/api'
+import { analysisService, templateService } from '../services/api'
 import { useToast } from '../context/ToastContext'
 import { useAuth } from '../context/AuthContext'
 import { formatDate } from '../utils/format'
@@ -45,6 +45,7 @@ const SECTIONS = [
   { id: 'metrics', label: 'Metrics' },
   { id: 'summary', label: 'AI Summary' },
   { id: 'decision', label: 'Decision' },
+  { id: 'scorecard', label: 'Scorecard' },
   { id: 'pack', label: 'Question pack' },
 ]
 
@@ -76,6 +77,9 @@ export default function Results() {
   const [sharing, setSharing] = useState(false)
   const [rerunning, setRerunning] = useState(false)
   const [archiving, setArchiving] = useState(false)
+  const [templates, setTemplates] = useState([])
+  const [applyId, setApplyId] = useState('')
+  const [scorecard, setScorecard] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -86,6 +90,7 @@ export default function Results() {
           if (!active) return
           setData(res)
           setDecision(res.decision || '')
+          setScorecard(res.scorecard || null)
           setLoading(false)
           return
         }
@@ -99,6 +104,7 @@ export default function Results() {
         setDecision(res.decision || '')
         setNotes(res.notes || '')
         setPackDraft(res.questionPack || '')
+        setScorecard(res.scorecard || null)
         setLoading(false)
       } catch (err) {
         if (!active) return
@@ -110,6 +116,11 @@ export default function Results() {
       active = false
     }
   }, [paramId, shareToken, navigate])
+
+  useEffect(() => {
+    if (shareMode) return
+    templateService.list().then(setTemplates).catch(() => {})
+  }, [shareMode])
 
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -195,6 +206,54 @@ export default function Results() {
       toast.error('Could not re-run', err.message)
       setRerunning(false)
     }
+  }
+
+  const applyTemplate = async () => {
+    if (!data || !applyId) return
+    setSavingReview(true)
+    try {
+      const saved = await analysisService.updateReview(data.overview.id, { applyTemplateId: applyId })
+      setData((d) => ({
+        ...d,
+        questionPack: saved.questionPack,
+        packCoverage: saved.packCoverage,
+        templateId: saved.templateId,
+        scorecard: saved.scorecard,
+        scorecardAverage: saved.scorecardAverage,
+      }))
+      setPackDraft(saved.questionPack || '')
+      setScorecard(saved.scorecard || null)
+      toast.success('Template applied', 'Question pack and scorecard are on this report.')
+    } catch (err) {
+      toast.error('Could not apply template', err.message)
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  const saveScorecard = async () => {
+    if (!data || !scorecard) return
+    setSavingReview(true)
+    try {
+      const saved = await analysisService.updateReview(data.overview.id, { scorecard })
+      setData((d) => ({ ...d, scorecard: saved.scorecard, scorecardAverage: saved.scorecardAverage }))
+      setScorecard(saved.scorecard)
+      toast.success('Scorecard saved', saved.scorecardAverage != null ? `Average ${saved.scorecardAverage}/5` : 'Ratings stored.')
+    } catch (err) {
+      toast.error('Could not save scorecard', err.message)
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  const setRating = (label, rating) => {
+    setScorecard((prev) => {
+      if (!prev?.items) return prev
+      return {
+        ...prev,
+        items: prev.items.map((item) => (item.label === label ? { ...item, rating } : item)),
+      }
+    })
   }
 
   const savePack = async () => {
@@ -291,6 +350,7 @@ export default function Results() {
     : 0
   const navSections = SECTIONS.filter((s) => {
     if (shareMode && (s.id === 'decision' || s.id === 'pack')) return false
+    if (s.id === 'scorecard' && shareMode && !data.scorecard?.items?.length) return false
     return true
   })
 
@@ -706,6 +766,95 @@ export default function Results() {
                 </Button>
               </div>
             </>
+          )}
+        </Card>
+      </section>
+      )}
+
+      {( !shareMode || scorecard?.items?.length) && (
+      <section id="scorecard" className="mt-8 scroll-mt-20">
+        <SectionTitle
+          tag="Hiring"
+          title="Role scorecard"
+          subtitle={
+            scorecard?.templateName
+              ? `${scorecard.templateName} — rate 1 (weak) to 5 (strong)`
+              : 'Apply a role template, then rate competencies next to the AI score'
+          }
+        />
+        <Card>
+          {!shareMode && canReview && templates.length ? (
+            <div className="mb-5 flex flex-wrap items-end gap-2">
+              <label className="min-w-[12rem] flex-1 text-sm">
+                <span className="mb-1 block text-xs font-medium text-ink-muted">Apply template</span>
+                <select
+                  value={applyId}
+                  onChange={(e) => setApplyId(e.target.value)}
+                  className="h-10 w-full rounded-xl border border-line bg-surface-2 px-3 text-sm focus-ring"
+                >
+                  <option value="">Choose a template…</option>
+                  {templates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button variant="outline" onClick={applyTemplate} disabled={!applyId} loading={savingReview}>
+                Apply pack + scorecard
+              </Button>
+            </div>
+          ) : null}
+          {scorecard?.items?.length ? (
+            <>
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <p className="text-sm text-ink-muted">
+                  {data.scorecardAverage != null
+                    ? `Average ${data.scorecardAverage}/5 across rated skills`
+                    : 'No ratings yet'}
+                </p>
+                {overview.overallScore != null ? (
+                  <p className="text-sm font-semibold text-ink">AI score {overview.overallScore}/100</p>
+                ) : null}
+              </div>
+              <ul className="space-y-4">
+                {scorecard.items.map((item) => (
+                  <li key={item.label} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span className="text-sm font-medium text-ink">{item.label}</span>
+                    <div className="flex gap-1">
+                      {[1, 2, 3, 4, 5].map((n) => (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={!canReview}
+                          onClick={() => setRating(item.label, n)}
+                          className={cn(
+                            'h-9 w-9 rounded-lg border text-sm font-semibold',
+                            item.rating === n
+                              ? 'border-primary bg-primary text-white'
+                              : 'border-line text-ink-muted hover:border-primary/40 hover:text-ink',
+                            !canReview && 'cursor-default',
+                          )}
+                        >
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+              {canReview ? (
+                <Button className="mt-5" variant="gradient" onClick={saveScorecard} loading={savingReview}>
+                  Save scorecard
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-ink-muted">
+              {shareMode
+                ? 'No scorecard on this report.'
+                : 'Apply a role template to attach expected questions and a competency scorecard.'}
+            </p>
           )}
         </Card>
       </section>

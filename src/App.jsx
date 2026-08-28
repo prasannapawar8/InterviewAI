@@ -19,6 +19,7 @@ import Results from './pages/Results'
 import Compare from './pages/Compare'
 import AnalysesList from './pages/AnalysesList'
 import CandidateHub from './pages/CandidateHub'
+import RoleTemplates from './pages/RoleTemplates'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
@@ -74,6 +75,7 @@ export default function App() {
         <Route path="/compare" element={<Compare />} />
         <Route path="/candidates" element={<CandidateHub />} />
         <Route path="/candidates/:name" element={<CandidateHub />} />
+        <Route path="/templates" element={<RoleTemplates />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 

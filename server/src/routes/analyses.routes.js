@@ -106,10 +106,8 @@ router.post(
         fileKey: key,
         originalName: req.file.originalname,
         size: req.file.size,
-        candidate: req.body?.candidate,
-        role: req.body?.role,
-        candidateConsent: true,
         questionPack: req.body?.questionPack,
+        templateId: req.body?.templateId,
       })
       res.status(201).json({ id: doc.id, status: doc.status })
     } catch (err) {
@@ -141,6 +139,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
     sentiment: doc.sentiment,
     questionPack: doc.questionPack,
     packCoverage: doc.packCoverage,
+    templateId: doc.templateId,
+    scorecard: doc.scorecard,
+    scorecardAverage: doc.scorecardAverage,
     archivedAt: doc.archivedAt,
   })
 }))
@@ -156,6 +157,8 @@ router.patch(
         decision: req.body?.decision,
         notes: req.body?.notes,
         questionPack: req.body?.questionPack,
+        scorecard: req.body?.scorecard,
+        applyTemplateId: req.body?.applyTemplateId,
       })
       const doc = toAnalysisDoc(updated)
       res.json({
@@ -164,6 +167,9 @@ router.patch(
         notes: doc.notes,
         questionPack: doc.questionPack,
         packCoverage: doc.packCoverage,
+        templateId: doc.templateId,
+        scorecard: doc.scorecard,
+        scorecardAverage: doc.scorecardAverage,
       })
     } catch (err) {
       if (err.status === 400) return apiError(res, 400, err.message)

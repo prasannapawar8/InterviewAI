@@ -4,6 +4,7 @@ import { config } from './config.js'
 import { newId } from './utils/ids.js'
 import { generateAnalysis } from './services/ai/engine.js'
 import { logger } from './logger.js'
+import { seedBuiltinTemplates } from './routes/templates.routes.js'
 
 const DEFAULT_PREFS = {
   notifications: {
@@ -78,6 +79,7 @@ export async function seedIfNeeded() {
       },
     })
   }
+  await seedBuiltinTemplates(org.id)
   logger.info('seeded demo org and analyses', { orgId: org.id, email: config.demoEmail })
 }
 
@@ -111,6 +113,7 @@ export async function createUserWithOrg({ name, email, password, orgName }) {
   await prisma.membership.create({
     data: { id: newId('mem'), userId: user.id, orgId: org.id, role: 'owner' },
   })
+  await seedBuiltinTemplates(org.id)
   return { user, org, role: 'owner' }
 }
 

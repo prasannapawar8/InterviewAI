@@ -152,6 +152,13 @@ export const orgService = {
   acceptInvite: (token) => request('/orgs/invites/accept', { method: 'POST', body: { token } }),
 }
 
+export const templateService = {
+  list: () => request('/templates').then((d) => d.items),
+  create: (body) => request('/templates', { method: 'POST', body }),
+  update: (id, body) => request(`/templates/${id}`, { method: 'PATCH', body }),
+  remove: (id) => request(`/templates/${id}`, { method: 'DELETE' }),
+}
+
 export const billingService = {
   usage: () => request('/billing/usage'),
   checkout: () => request('/billing/checkout', { method: 'POST' }),
@@ -176,8 +183,11 @@ export const analysisService = {
     return data.items
   },
 
-  updateReview(id, { decision, notes, questionPack }) {
-    return request(`/analyses/${id}`, { method: 'PATCH', body: { decision, notes, questionPack } })
+  updateReview(id, { decision, notes, questionPack, scorecard, applyTemplateId }) {
+    return request(`/analyses/${id}`, {
+      method: 'PATCH',
+      body: { decision, notes, questionPack, scorecard, applyTemplateId },
+    })
   },
 
   createShareLink(id) {
@@ -215,12 +225,13 @@ export const analysisService = {
     throw new Error('Unexpected CSV response')
   },
 
-  async upload(file, { onProgress, candidate, role, candidateConsent, questionPack } = {}) {
+  async upload(file, { onProgress, candidate, role, candidateConsent, questionPack, templateId } = {}) {
     const formData = new FormData()
     formData.append('file', file)
     if (candidate) formData.append('candidate', candidate)
     if (role) formData.append('role', role)
     if (questionPack) formData.append('questionPack', questionPack)
+    if (templateId) formData.append('templateId', templateId)
     formData.append('candidateConsent', candidateConsent ? 'true' : 'false')
     return uploadWithProgress(formData, { onProgress })
   },

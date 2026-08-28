@@ -122,3 +122,21 @@ describe('analysis result contract', () => {
     assert.equal(predictSentiment('I have around six years of experience in backend systems.', sentimentModel).label, 'neutral')
   })
 })
+
+describe('role templates', () => {
+  it('normalizes competencies and merges scorecard ratings by label', async () => {
+    const { normalizeCompetencies, snapshotFromTemplate, mergeScorecard, scorecardAverage } = await import(
+      '../src/services/templates.js'
+    )
+    assert.deepEqual(normalizeCompetencies(['Communication', 'communication', 'Ownership']), [
+      'Communication',
+      'Ownership',
+    ])
+    const tpl = { id: 'tpl_1', name: 'Backend screen', competencies: ['Communication', 'Ownership'] }
+    const snap = snapshotFromTemplate(tpl)
+    snap.items[0].rating = 4
+    const merged = mergeScorecard(snap, { id: 'tpl_1', name: 'Backend screen', competencies: ['Ownership', 'Communication'] })
+    assert.equal(merged.items.find((i) => i.label === 'Communication').rating, 4)
+    assert.equal(scorecardAverage({ items: [{ rating: 4 }, { rating: 5 }] }), 4.5)
+  })
+})

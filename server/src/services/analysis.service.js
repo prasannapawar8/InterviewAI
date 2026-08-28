@@ -1,13 +1,20 @@
 import path from 'node:path'
 import { prisma } from '../prisma.js'
 import { config } from '../config.js'
-import { newId, formatDuration } from '../utils/ids.js'
+import { formatDuration } from '../utils/ids.js'
 import { enqueueAnalysis } from './queue.js'
 import { PIPELINE_STAGES } from './pipeline.stages.js'
 import { prepareTranscript, summarizeInterview, isPlaceholderSummary } from './ai/live.js'
 import { analyzeTurns } from './ai/features/turns.js'
 import { detectStar } from './ai/features/star.js'
 import { matchQuestionPack } from './ai/features/questionPack.js'
+import { explainScore } from './ai/score.js'
+import {
+  mergeScorecard,
+  normalizeScorecard,
+  scorecardAverage,
+  snapshotFromTemplate,
+} from './templates.js'
 
 export { PIPELINE_STAGES }
 
@@ -38,11 +45,26 @@ export async function createAnalysisJob({
   role,
   candidateConsent,
   questionPack,
+  templateId,
 }) {
   const now = new Date()
   const durationSeconds = Math.min(config.maxDurationSeconds, durationFromSize(size))
   const name = (candidate && candidate.trim()) || humanizeName(path.parse(originalName || '').name)
   const mediaExpiresAt = new Date(now.getTime() + config.retentionDays * 24 * 60 * 60 * 1000)
+
+  let pack = questionPack ? String(questionPack).slice(0, 8000) : null
+  let roleName = role?.trim() || ''
+  let scorecard = null
+  let linkedTemplateId = null
+  if (templateId) {
+    const template = await prisma.roleTemplate.findFirst({ where: { id: String(templateId), orgId } })
+    if (template) {
+      linkedTemplateId = template.id
+      if (!pack) pack = template.questionPack || null
+      if (!roleName) roleName = template.roleTitle || ''
+      scorecard = snapshotFromTemplate(template)
+    }
+  }
 
   const row = await prisma.analysis.create({
     data: {
@@ -56,11 +78,13 @@ export async function createAnalysisJob({
       fileKey,
       candidateConsent: Boolean(candidateConsent),
       candidate: name,
-      role: role?.trim() || 'Interview Candidate',
+      role: roleName || 'Interview Candidate',
       interviewDate: now,
       durationSeconds,
       mediaExpiresAt,
-      questionPack: questionPack ? String(questionPack).slice(0, 8000) : null,
+      questionPack: pack,
+      templateId: linkedTemplateId,
+      scorecard,
     },
   })
 
@@ -123,11 +147,14 @@ export function toAnalysisDoc(row) {
     notes: row.notes || '',
     questionPack: row.questionPack || '',
     packCoverage,
+    templateId: row.templateId || null,
+    scorecard: row.scorecard || null,
+    scorecardAverage: scorecardAverage(row.scorecard),
     archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
   }
 }
 
-export async function updateAnalysisReview(id, { decision, notes, questionPack }) {
+export async function updateAnalysisReview(id, { decision, notes, questionPack, scorecard, applyTemplateId }) {
   const data = {}
   if (decision !== undefined) {
     const allowed = ['Advance', 'Consider', 'Reject', '']
@@ -140,6 +167,25 @@ export async function updateAnalysisReview(id, { decision, notes, questionPack }
   }
   if (notes !== undefined) data.notes = String(notes).slice(0, 4000)
   if (questionPack !== undefined) data.questionPack = String(questionPack).slice(0, 8000) || null
+  if (scorecard !== undefined) data.scorecard = normalizeScorecard(scorecard)
+  if (applyTemplateId) {
+    const current = await prisma.analysis.findUnique({ where: { id } })
+    if (!current) return null
+    const template = await prisma.roleTemplate.findFirst({
+      where: { id: String(applyTemplateId), orgId: current.orgId },
+    })
+    if (!template) {
+      const err = new Error('Template not found')
+      err.status = 400
+      throw err
+    }
+    data.templateId = template.id
+    data.questionPack = template.questionPack || null
+    data.scorecard = mergeScorecard(current.scorecard, template)
+    if (!current.role || current.role === 'Interview Candidate') {
+      if (template.roleTitle) data.role = template.roleTitle
+    }
+  }
   if (!Object.keys(data).length) return prisma.analysis.findUnique({ where: { id } })
   return prisma.analysis.update({ where: { id }, data })
 }

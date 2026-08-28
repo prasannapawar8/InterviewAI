@@ -72,6 +72,14 @@ function buildReportLines(a) {
     }
     push('')
   }
+  if (a.scorecard?.items?.length) {
+    push(`SCORECARD${a.scorecard.templateName ? ` (${a.scorecard.templateName})` : ''}`, 11)
+    for (const item of a.scorecard.items) {
+      push(`  ${item.label}: ${item.rating != null ? `${item.rating}/5` : 'not rated'}`)
+    }
+    if (a.scorecardAverage != null) push(`  Average: ${a.scorecardAverage}/5`)
+    push('')
+  }
   push('SENTIMENT DISTRIBUTION', 11)
   for (const b of sentimentBreakdown) push(`  ${b.name}: ${b.value}%`)
   push('')

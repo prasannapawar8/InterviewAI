@@ -8,6 +8,7 @@ import cookieParser from 'cookie-parser'
 import { config } from './config.js'
 import { prisma } from './prisma.js'
 import { seedIfNeeded } from './db.js'
+import { seedBuiltinTemplates } from './routes/templates.routes.js'
 import { errorHandler, notFound } from './middleware/errors.js'
 import { logger } from './logger.js'
 import { initQueue, startWorker } from './services/queue.js'
@@ -19,6 +20,7 @@ import analysesRoutes from './routes/analyses.routes.js'
 import orgsRoutes from './routes/orgs.routes.js'
 import billingRoutes, { handleStripeWebhook } from './routes/billing.routes.js'
 import shareRoutes from './routes/share.routes.js'
+import templatesRoutes from './routes/templates.routes.js'
 
 const app = express()
 
@@ -68,6 +70,7 @@ app.use('/api/users', usersRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/analyses', analysesRoutes)
 app.use('/api/share', shareRoutes)
+app.use('/api/templates', templatesRoutes)
 app.use('/api/orgs', orgsRoutes)
 app.use('/api/billing', billingRoutes)
 
@@ -83,6 +86,10 @@ export async function boot() {
 
   await prisma.$connect()
   await seedIfNeeded()
+  const orgs = await prisma.organization.findMany({ select: { id: true } })
+  for (const org of orgs) {
+    await seedBuiltinTemplates(org.id)
+  }
   await initQueue()
 
   if (process.env.RUN_WORKER === 'true' || !config.redisUrl) {
