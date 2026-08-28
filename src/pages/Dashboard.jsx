@@ -5,7 +5,6 @@ import PageTransition from '../components/ui/PageTransition'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import { Card, CardHeader } from '../components/ui/Card'
-import Badge from '../components/ui/Badge'
 import StatCard from '../components/dashboard/StatCard'
 import RecentAnalysesTable from '../components/dashboard/RecentAnalysesTable'
 import AnalyticsAreaChart from '../components/charts/AnalyticsAreaChart'
@@ -71,7 +70,6 @@ export default function Dashboard() {
           <CardHeader
             title="Analytics Overview"
             subtitle="Interviews & average confidence over the last 12 months"
-            action={<Badge variant="primary">+12.5% this month</Badge>}
           />
           {loading ? <ChartSkeleton className="h-72" /> : <AnalyticsAreaChart data={overview} />}
         </Card>

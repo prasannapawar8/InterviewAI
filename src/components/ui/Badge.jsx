@@ -18,6 +18,7 @@ const SEMANTIC = {
   Processing: 'warning',
   Failed: 'danger',
   Advance: 'success',
+  Consider: 'warning',
   Hold: 'warning',
   Reject: 'danger',
 }

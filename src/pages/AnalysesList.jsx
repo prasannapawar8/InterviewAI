@@ -1,13 +1,23 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Columns2, Download, Search } from 'lucide-react'
+import { Columns2, Download, Search, UploadCloud } from 'lucide-react'
 import PageTransition from '../components/ui/PageTransition'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import Badge from '../components/ui/Badge'
+import Avatar from '../components/ui/Avatar'
 import { TableSkeleton } from '../components/ui/Skeleton'
 import { analysisService } from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { cn } from '../utils/cn'
+
+function ScorePill({ score }) {
+  if (score == null) return <span className="text-ink-subtle">—</span>
+  const tone =
+    score >= 85 ? 'text-success' : score >= 70 ? 'text-primary' : score >= 50 ? 'text-warning' : 'text-danger'
+  return <span className={cn('font-semibold tabular-nums', tone)}>{score}</span>
+}
 
 export default function AnalysesList() {
   const navigate = useNavigate()
@@ -17,14 +27,34 @@ export default function AnalysesList() {
   const [loading, setLoading] = useState(true)
   const [csvLoading, setCsvLoading] = useState(false)
   const [pick, setPick] = useState([])
+  const [qDraft, setQDraft] = useState(params.get('q') || '')
 
   const q = params.get('q') || ''
   const status = params.get('status') || ''
   const recommendation = params.get('recommendation') || ''
   const minScore = params.get('minScore') || ''
   const maxScore = params.get('maxScore') || ''
-
   const filters = { q, status, recommendation, minScore, maxScore }
+  const hasFilters = Boolean(q || status || recommendation || minScore || maxScore)
+
+  useEffect(() => {
+    setQDraft(q)
+  }, [q])
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setParams((prev) => {
+        const next = new URLSearchParams(prev)
+        const current = next.get('q') || ''
+        const nextQ = qDraft.trim()
+        if (current === nextQ) return prev
+        if (nextQ) next.set('q', nextQ)
+        else next.delete('q')
+        return next
+      }, { replace: true })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [qDraft, setParams])
 
   useEffect(() => {
     let active = true
@@ -83,31 +113,30 @@ export default function AnalysesList() {
       <PageHeader
         title="Analyses"
         subtitle="Search, filter, compare two candidates, or export metrics to CSV."
-        actions={
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="outline"
-              disabled={pick.length !== 2}
-              onClick={() => navigate(`/compare?a=${pick[0]}&b=${pick[1]}`)}
-            >
-              <Columns2 className="h-4 w-4" />
-              Compare {pick.length ? `(${pick.length}/2)` : ''}
-            </Button>
-            <Button variant="gradient" onClick={downloadCsv} loading={csvLoading}>
-              <Download className="h-4 w-4" />
-              Export CSV
-            </Button>
-          </div>
-        }
       />
+
+      <div className="sticky top-16 z-20 mb-3 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-soft backdrop-blur-xl">
+        <Button
+          variant="outline"
+          disabled={pick.length !== 2}
+          onClick={() => navigate(`/compare?a=${pick[0]}&b=${pick[1]}`)}
+        >
+          <Columns2 className="h-4 w-4" />
+          Compare {pick.length ? `(${pick.length}/2)` : ''}
+        </Button>
+        <Button variant="gradient" onClick={downloadCsv} loading={csvLoading}>
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
+      </div>
 
       <Card className="mb-5">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           <label className="relative sm:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-subtle" />
             <input
-              value={q}
-              onChange={(e) => setFilter('q', e.target.value)}
+              value={qDraft}
+              onChange={(e) => setQDraft(e.target.value)}
               placeholder="Candidate or role"
               className="h-10 w-full rounded-xl border border-line bg-surface-2 pl-9 pr-3 text-sm focus-ring"
             />
@@ -154,15 +183,30 @@ export default function AnalysesList() {
           </div>
         </div>
         <p className="mt-3 text-xs text-ink-subtle">
-          Select two rows with the checkboxes, then Compare. Recruiter decision overrides the AI recommendation in filters.
+          Select two completed interviews, then Compare. A recruiter decision overrides the AI recommendation in filters.
         </p>
       </Card>
 
-      <Card>
+      <Card className="overflow-hidden">
         {loading ? (
-          <TableSkeleton rows={8} />
+          <div className="p-4">
+            <TableSkeleton rows={8} />
+          </div>
         ) : items.length === 0 ? (
-          <p className="p-8 text-center text-sm text-ink-muted">No analyses match these filters.</p>
+          <div className="px-6 py-14 text-center">
+            <p className="text-base font-semibold text-ink">
+              {hasFilters ? 'No interviews match these filters' : 'No analyses yet'}
+            </p>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
+              {hasFilters
+                ? 'Clear a filter or search a different candidate name.'
+                : 'Upload a recording to generate a transcript, score, and hiring notes.'}
+            </p>
+            <Button variant="gradient" className="mt-6" onClick={() => navigate('/upload')}>
+              <UploadCloud className="h-4 w-4" />
+              Upload interview
+            </Button>
+          </div>
         ) : (
           <AnalysesPickTable data={items} pick={pick} onToggle={togglePick} />
         )}
@@ -178,7 +222,7 @@ function AnalysesPickTable({ data, pick, onToggle }) {
       <table className="w-full text-left text-sm">
         <thead>
           <tr className="border-b border-line text-xs font-semibold uppercase tracking-wider text-ink-subtle">
-            <th className="px-3 py-3 w-10"> </th>
+            <th className="w-12 px-4 py-3"> </th>
             <th className="px-4 py-3">Candidate</th>
             <th className="px-4 py-3">Score</th>
             <th className="px-4 py-3">Recommendation</th>
@@ -187,32 +231,49 @@ function AnalysesPickTable({ data, pick, onToggle }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
-          {data.map((row) => (
-            <tr key={row.id} className="hover:bg-surface-2">
-              <td className="px-3 py-3">
-                <input
-                  type="checkbox"
-                  checked={pick.includes(row.id)}
-                  onChange={() => onToggle(row.id)}
-                  disabled={row.status !== 'Completed' && !pick.includes(row.id)}
-                />
-              </td>
-              <td className="px-4 py-3">
-                <button
-                  type="button"
-                  className="text-left font-medium text-ink hover:text-primary"
-                  onClick={() => navigate(`/results/${row.id}`)}
-                >
-                  {row.candidate}
-                  <span className="mt-0.5 block text-xs font-normal text-ink-subtle">{row.role}</span>
-                </button>
-              </td>
-              <td className="px-4 py-3 tabular-nums">{row.score ?? '—'}</td>
-              <td className="px-4 py-3">{row.recommendation || '—'}</td>
-              <td className="px-4 py-3">{row.status}</td>
-              <td className="px-4 py-3 text-ink-muted">{row.date}</td>
-            </tr>
-          ))}
+          {data.map((row) => {
+            const selected = pick.includes(row.id)
+            return (
+              <tr
+                key={row.id}
+                className={cn('transition-colors hover:bg-surface-2', selected && 'bg-primary/5')}
+              >
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-line text-primary focus-ring"
+                    checked={selected}
+                    onChange={() => onToggle(row.id)}
+                    disabled={row.status !== 'Completed' && !selected}
+                    aria-label={`Select ${row.candidate} for compare`}
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    className="flex min-w-0 items-center gap-3 text-left"
+                    onClick={() => navigate(`/results/${row.id}`)}
+                  >
+                    <Avatar name={row.candidate} size="sm" />
+                    <span>
+                      <span className="block font-medium text-ink hover:text-primary">{row.candidate}</span>
+                      <span className="block text-xs font-normal text-ink-subtle">{row.role}</span>
+                    </span>
+                  </button>
+                </td>
+                <td className="px-4 py-3">
+                  <ScorePill score={row.score} />
+                </td>
+                <td className="px-4 py-3">
+                  {row.recommendation ? <Badge>{row.recommendation}</Badge> : <span className="text-ink-subtle">—</span>}
+                </td>
+                <td className="px-4 py-3">
+                  <Badge>{row.status}</Badge>
+                </td>
+                <td className="px-4 py-3 text-ink-muted">{row.date}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>
