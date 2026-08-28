@@ -11,8 +11,8 @@ export default function DashboardLayout() {
       <Sidebar mobileOpen={mobileOpen} onClose={() => setMobileOpen(false)} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onMenuClick={() => setMobileOpen(true)} />
-        <main className="flex-1 p-4 sm:p-6 lg:p-8">
-          <div className="mx-auto max-w-7xl">
+        <main className="flex-1 p-5 sm:p-8 lg:p-10">
+          <div className="mx-auto max-w-6xl">
             <Outlet />
           </div>
         </main>

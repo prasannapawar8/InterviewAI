@@ -102,6 +102,8 @@ model Analysis {
   result           Json?
   decision         String?
   notes            String?
+  questionPack     String?
+  archivedAt       DateTime?
   createdAt        DateTime       @default(now())
   mediaExpiresAt   DateTime?
   org              Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)

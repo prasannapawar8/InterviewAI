@@ -8,6 +8,9 @@ import {
   Award,
   Download,
   ChevronLeft,
+  Share2,
+  Archive,
+  RotateCcw,
   CheckCircle2,
   AlertTriangle,
   ThumbsUp,
@@ -42,6 +45,7 @@ const SECTIONS = [
   { id: 'metrics', label: 'Metrics' },
   { id: 'summary', label: 'AI Summary' },
   { id: 'decision', label: 'Decision' },
+  { id: 'pack', label: 'Question pack' },
 ]
 
 function SectionTitle({ tag, title, subtitle }) {
@@ -56,10 +60,11 @@ function SectionTitle({ tag, title, subtitle }) {
 
 export default function Results() {
   const navigate = useNavigate()
-  const { id: paramId } = useParams()
+  const { id: paramId, token: shareToken } = useParams()
   const toast = useToast()
   const { user } = useAuth()
-  const canReview = ['owner', 'admin', 'recruiter'].includes(user?.membershipRole)
+  const shareMode = Boolean(shareToken)
+  const canReview = !shareMode && ['owner', 'admin', 'recruiter'].includes(user?.membershipRole)
   const [loading, setLoading] = useState(true)
   const [data, setData] = useState(null)
   const [error, setError] = useState('')
@@ -67,11 +72,22 @@ export default function Results() {
   const [decision, setDecision] = useState('')
   const [notes, setNotes] = useState('')
   const [savingReview, setSavingReview] = useState(false)
+  const [packDraft, setPackDraft] = useState('')
+  const [sharing, setSharing] = useState(false)
+  const [rerunning, setRerunning] = useState(false)
 
   useEffect(() => {
     let active = true
     ;(async () => {
       try {
+        if (shareToken) {
+          const res = await analysisService.getShared(shareToken)
+          if (!active) return
+          setData(res)
+          setDecision(res.decision || '')
+          setLoading(false)
+          return
+        }
         if (!paramId) {
           navigate('/results', { replace: true })
           return
@@ -81,6 +97,7 @@ export default function Results() {
         setData(res)
         setDecision(res.decision || '')
         setNotes(res.notes || '')
+        setPackDraft(res.questionPack || '')
         setLoading(false)
       } catch (err) {
         if (!active) return
@@ -91,7 +108,7 @@ export default function Results() {
     return () => {
       active = false
     }
-  }, [paramId, navigate])
+  }, [paramId, shareToken, navigate])
 
   const scrollTo = (id) => {
     document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -127,6 +144,58 @@ export default function Results() {
       toast.success('Decision saved', 'Recruiter notes are stored on this analysis.')
     } catch (err) {
       toast.error('Could not save', err.message)
+    } finally {
+      setSavingReview(false)
+    }
+  }
+
+  const copyShareLink = async () => {
+    if (!data) return
+    setSharing(true)
+    try {
+      const { url, expiresAt } = await analysisService.createShareLink(data.overview.id)
+      await navigator.clipboard.writeText(url)
+      const until = expiresAt ? new Date(expiresAt).toLocaleDateString() : '7 days'
+      toast.success('Share link copied', `Anyone with the link can view this report until ${until}.`)
+    } catch (err) {
+      toast.error('Could not create link', err.message)
+    } finally {
+      setSharing(false)
+    }
+  }
+
+  const archiveIt = async () => {
+    if (!data) return
+    try {
+      await analysisService.archive(data.overview.id, true)
+      toast.success('Archived', 'This analysis is hidden from the default list.')
+      navigate('/results')
+    } catch (err) {
+      toast.error('Could not archive', err.message)
+    }
+  }
+
+  const rerun = async () => {
+    if (!data) return
+    setRerunning(true)
+    try {
+      await analysisService.retry(data.overview.id)
+      navigate(`/processing?id=${data.overview.id}`, { state: { analysisId: data.overview.id } })
+    } catch (err) {
+      toast.error('Could not re-run', err.message)
+      setRerunning(false)
+    }
+  }
+
+  const savePack = async () => {
+    if (!data) return
+    setSavingReview(true)
+    try {
+      const saved = await analysisService.updateReview(data.overview.id, { questionPack: packDraft })
+      setData((d) => ({ ...d, questionPack: saved.questionPack, packCoverage: saved.packCoverage }))
+      toast.success('Question pack saved', 'Coverage is matched against the transcript.')
+    } catch (err) {
+      toast.error('Could not save pack', err.message)
     } finally {
       setSavingReview(false)
     }
@@ -205,23 +274,29 @@ export default function Results() {
     strengths,
     weaknesses,
     aiSummary,
+    packCoverage,
   } = data
-  const avgConfidence = Math.round(
-    confidenceTrend.reduce((s, p) => s + p.confidence, 0) / confidenceTrend.length,
-  )
+  const avgConfidence = confidenceTrend?.length
+    ? Math.round(confidenceTrend.reduce((s, p) => s + p.confidence, 0) / confidenceTrend.length)
+    : 0
+  const navSections = SECTIONS.filter((s) => {
+    if (shareMode && (s.id === 'decision' || s.id === 'pack')) return false
+    return true
+  })
 
   return (
     <PageTransition>
+      <div className={cn(shareMode && 'mx-auto min-h-screen max-w-7xl bg-surface-2 px-4 py-8 sm:px-8')}>
       {/* Back + section nav */}
       <div className="mb-6 flex flex-col gap-4">
         <button
-          onClick={() => navigate('/results')}
+          onClick={() => (shareMode ? navigate('/') : navigate('/results'))}
           className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-ink-muted hover:text-ink"
         >
-          <ChevronLeft className="h-4 w-4" /> Back to analyses
+          <ChevronLeft className="h-4 w-4" /> {shareMode ? 'IntervAI' : 'Back to analyses'}
         </button>
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
-          {SECTIONS.map((s) => (
+          {navSections.map((s) => (
             <button
               key={s.id}
               onClick={() => scrollTo(s.id)}
@@ -237,8 +312,8 @@ export default function Results() {
       <section id="overview">
         <Card className="overflow-hidden p-0">
           <div className="bg-brand-gradient p-6 text-white sm:p-8">
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
                   {overview.recommendation ? (
                     <Badge className="bg-white/20 text-white">{overview.recommendation}</Badge>
@@ -249,26 +324,35 @@ export default function Results() {
                 </div>
                 <h1 className="mt-3 text-2xl font-bold sm:text-3xl">{overview.candidate}</h1>
                 <p className="mt-1 text-white/80">{overview.role}</p>
+                {!shareMode && overview.candidate ? (
+                  <button
+                    type="button"
+                    className="mt-2 text-sm font-medium text-white/90 underline decoration-white/40 underline-offset-2 hover:decoration-white"
+                    onClick={() => navigate(`/candidates/${encodeURIComponent(overview.candidate)}`)}
+                  >
+                    All rounds for this candidate
+                  </button>
+                ) : null}
               </div>
-              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <Button
-                  className="bg-white text-primary hover:bg-white/90"
-                  onClick={downloadPdf}
-                  loading={downloading}
-                >
-                  <Download className="h-4 w-4" /> {downloading ? 'Generating…' : 'Download PDF'}
-                </Button>
-                <Button
-                  variant="outline"
-                  className="border-white/40 bg-white/10 text-white hover:bg-white/20"
-                  onClick={downloadOneCsv}
-                >
-                  CSV
-                </Button>
-              </div>
+              {!shareMode && (
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button variant="inverse" onClick={downloadPdf} loading={downloading}>
+                    <Download className="h-4 w-4" />
+                    {downloading ? 'Generating…' : 'Download PDF'}
+                  </Button>
+                  <Button variant="onBrand" onClick={downloadOneCsv}>
+                    Export CSV
+                  </Button>
+                  {canReview && (
+                    <Button variant="onBrand" onClick={copyShareLink} loading={sharing}>
+                      <Share2 className="h-4 w-4" /> Share
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
           </div>
-          <div className="grid grid-cols-2 divide-x divide-line border-t border-line sm:grid-cols-4">
+          <div className="grid grid-cols-2 divide-x divide-y divide-line border-t border-line lg:grid-cols-4 lg:divide-y-0">
             {[
               { icon: User, label: 'Candidate', value: overview.candidate.split(' ')[0] },
               { icon: Calendar, label: 'Interview Date', value: formatDate(overview.date) },
@@ -281,7 +365,7 @@ export default function Results() {
                 </span>
                 <div className="min-w-0">
                   <p className="text-xs text-ink-subtle">{item.label}</p>
-                  <p className={cn('truncate font-bold', item.tone ? 'text-success' : 'text-ink')}>
+                  <p className={cn('font-bold leading-tight', item.tone ? 'text-success' : 'text-ink')}>
                     {item.value}
                   </p>
                 </div>
@@ -537,14 +621,17 @@ export default function Results() {
               <span className="text-sm text-ink-muted">Final recommendation:</span>
               <Badge variant="success">{aiSummary.recommendation}</Badge>
             </div>
+            {!shareMode && (
             <Button variant="gradient" onClick={downloadPdf} loading={downloading}>
               <Download className="h-4 w-4" />
               {downloading ? 'Generating…' : 'Download PDF Report'}
             </Button>
+            )}
           </div>
         </Card>
       </section>
 
+      {!shareMode && (
       <section id="decision" className="mt-8 scroll-mt-20">
         <SectionTitle
           tag="Recruiter"
@@ -594,10 +681,65 @@ export default function Results() {
               <Button className="mt-4" variant="gradient" onClick={saveReview} loading={savingReview}>
                 Save decision
               </Button>
+              <div className="mt-6 flex flex-wrap gap-2 border-t border-line pt-4">
+                <Button variant="outline" onClick={rerun} loading={rerunning}>
+                  <RotateCcw className="h-4 w-4" /> Re-analyze
+                </Button>
+                <Button variant="outline" onClick={archiveIt}>
+                  <Archive className="h-4 w-4" /> Archive
+                </Button>
+              </div>
             </>
           )}
         </Card>
       </section>
+      )}
+
+      {!shareMode && (
+      <section id="pack" className="mt-8 scroll-mt-20">
+        <SectionTitle
+          tag="Job"
+          title="Question pack"
+          subtitle="Paste expected questions (one per line). We flag which ones show up in the transcript."
+        />
+        <Card>
+          {packCoverage?.total ? (
+            <p className="mb-4 text-sm text-ink-muted">
+              Covered {packCoverage.covered} of {packCoverage.total} expected questions
+            </p>
+          ) : null}
+          {packCoverage?.items?.length ? (
+            <ul className="mb-4 space-y-2">
+              {packCoverage.items.map((item) => (
+                <li key={item.question} className="flex gap-2 text-sm">
+                  <span className={item.covered ? 'text-success' : 'text-warning'}>
+                    {item.covered ? 'Covered' : 'Missing'}
+                  </span>
+                  <span className="text-ink-muted">{item.question}</span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {canReview ? (
+            <>
+              <textarea
+                value={packDraft}
+                onChange={(e) => setPackDraft(e.target.value)}
+                rows={6}
+                placeholder={'Tell me about a time you led a project\nHow do you handle conflicting priorities?'}
+                className="w-full rounded-xl border border-line bg-surface-2 p-3 text-sm text-ink focus-ring"
+              />
+              <Button className="mt-4" variant="gradient" onClick={savePack} loading={savingReview}>
+                Save question pack
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-ink-muted">Only recruiters can edit the question pack.</p>
+          )}
+        </Card>
+      </section>
+      )}
+      </div>
     </PageTransition>
   )
 }

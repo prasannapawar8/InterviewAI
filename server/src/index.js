@@ -18,6 +18,7 @@ import dashboardRoutes from './routes/dashboard.routes.js'
 import analysesRoutes from './routes/analyses.routes.js'
 import orgsRoutes from './routes/orgs.routes.js'
 import billingRoutes, { handleStripeWebhook } from './routes/billing.routes.js'
+import shareRoutes from './routes/share.routes.js'
 
 const app = express()
 
@@ -66,6 +67,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/dashboard', dashboardRoutes)
 app.use('/api/analyses', analysesRoutes)
+app.use('/api/share', shareRoutes)
 app.use('/api/orgs', orgsRoutes)
 app.use('/api/billing', billingRoutes)
 

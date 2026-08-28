@@ -8,6 +8,7 @@ import {
   LogOut,
   X,
   Columns2,
+  Users,
 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import Button from '../components/ui/Button'
@@ -19,6 +20,7 @@ const NAV = [
   { to: '/upload', label: 'Upload Interview', icon: UploadCloud, end: true },
   { to: '/results', label: 'Analysis Results', icon: FileBarChart2 },
   { to: '/compare', label: 'Compare', icon: Columns2, end: true },
+  { to: '/candidates', label: 'Candidates', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings, end: true },
 ]
 
@@ -35,7 +37,7 @@ function NavItems({ onNavigate }) {
             cn(
               'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
               isActive
-                ? 'bg-primary/10 text-primary'
+                ? 'bg-primary/10 text-primary shadow-soft'
                 : 'text-ink-muted hover:bg-surface-3 hover:text-ink',
             )
           }

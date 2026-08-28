@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   UploadCloud,
@@ -27,7 +27,8 @@ const STEP_ICONS = {
 export default function Processing() {
   const navigate = useNavigate()
   const location = useLocation()
-  const analysisId = location.state?.analysisId
+  const [params] = useSearchParams()
+  const analysisId = location.state?.analysisId || params.get('id')
   const fileName = location.state?.fileName || 'interview-recording.mp4'
 
   const [progress, setProgress] = useState(0)

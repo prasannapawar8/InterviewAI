@@ -14,6 +14,10 @@ const VARIANTS = {
   ghost: 'bg-transparent text-ink-muted hover:bg-surface-3 hover:text-ink',
   danger: 'bg-danger text-white hover:bg-danger/90 shadow-soft',
   success: 'bg-success text-white hover:bg-success/90 shadow-soft',
+  inverse:
+    'bg-white text-primary shadow-soft hover:bg-white hover:text-primary-700',
+  onBrand:
+    'border border-white/45 bg-white/15 text-white shadow-none hover:bg-white/25',
 }
 
 const SIZES = {

@@ -18,6 +18,7 @@ import Processing from './pages/Processing'
 import Results from './pages/Results'
 import Compare from './pages/Compare'
 import AnalysesList from './pages/AnalysesList'
+import CandidateHub from './pages/CandidateHub'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
 
@@ -37,6 +38,7 @@ export default function App() {
     <Routes>
       {/* Public */}
       <Route path="/" element={<Landing />} />
+      <Route path="/share/:token" element={<Results />} />
 
       {/* Auth */}
       <Route element={<AuthLayout />}>
@@ -70,6 +72,8 @@ export default function App() {
         <Route path="/results" element={<AnalysesList />} />
         <Route path="/results/:id" element={<Results />} />
         <Route path="/compare" element={<Compare />} />
+        <Route path="/candidates" element={<CandidateHub />} />
+        <Route path="/candidates/:name" element={<CandidateHub />} />
         <Route path="/settings" element={<Settings />} />
       </Route>
 

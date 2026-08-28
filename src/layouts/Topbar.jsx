@@ -61,7 +61,6 @@ export default function Topbar({ onMenuClick }) {
           aria-label="Notifications"
         >
           <Bell className="h-[18px] w-[18px]" />
-          <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full bg-danger ring-2 ring-surface" />
         </button>
 
         {/* Profile dropdown */}

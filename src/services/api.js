@@ -171,12 +171,35 @@ export const analysisService = {
     if (filters.recommendation) params.set('recommendation', filters.recommendation)
     if (filters.minScore !== undefined && filters.minScore !== '') params.set('minScore', String(filters.minScore))
     if (filters.maxScore !== undefined && filters.maxScore !== '') params.set('maxScore', String(filters.maxScore))
+    if (filters.archived) params.set('archived', '1')
     const data = await request(`/analyses?${params}`)
     return data.items
   },
 
-  updateReview(id, { decision, notes }) {
-    return request(`/analyses/${id}`, { method: 'PATCH', body: { decision, notes } })
+  updateReview(id, { decision, notes, questionPack }) {
+    return request(`/analyses/${id}`, { method: 'PATCH', body: { decision, notes, questionPack } })
+  },
+
+  createShareLink(id) {
+    return request(`/analyses/${id}/share`, { method: 'POST' })
+  },
+
+  archive(id, archived = true) {
+    return request(`/analyses/${id}/archive`, { method: 'POST', body: { archived } })
+  },
+
+  listCandidates() {
+    return request('/analyses/candidates').then((d) => d.items)
+  },
+
+  getCandidate(name) {
+    return request(`/analyses/candidates/${encodeURIComponent(name)}`)
+  },
+
+  async getShared(token) {
+    const res = await fetch(`${API_URL}/share/${encodeURIComponent(token)}`, { credentials: 'include' })
+    if (!res.ok) throw await parseError(res)
+    return res.json()
   },
 
   async downloadCsv(filters = {}) {
@@ -192,11 +215,12 @@ export const analysisService = {
     throw new Error('Unexpected CSV response')
   },
 
-  async upload(file, { onProgress, candidate, role, candidateConsent } = {}) {
+  async upload(file, { onProgress, candidate, role, candidateConsent, questionPack } = {}) {
     const formData = new FormData()
     formData.append('file', file)
     if (candidate) formData.append('candidate', candidate)
     if (role) formData.append('role', role)
+    if (questionPack) formData.append('questionPack', questionPack)
     formData.append('candidateConsent', candidateConsent ? 'true' : 'false')
     return uploadWithProgress(formData, { onProgress })
   },

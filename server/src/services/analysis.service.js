@@ -7,7 +7,7 @@ import { PIPELINE_STAGES } from './pipeline.stages.js'
 import { prepareTranscript, summarizeInterview, isPlaceholderSummary } from './ai/live.js'
 import { analyzeTurns } from './ai/features/turns.js'
 import { detectStar } from './ai/features/star.js'
-import { explainScore } from './ai/score.js'
+import { matchQuestionPack } from './ai/features/questionPack.js'
 
 export { PIPELINE_STAGES }
 
@@ -37,6 +37,7 @@ export async function createAnalysisJob({
   candidate,
   role,
   candidateConsent,
+  questionPack,
 }) {
   const now = new Date()
   const durationSeconds = Math.min(config.maxDurationSeconds, durationFromSize(size))
@@ -59,6 +60,7 @@ export async function createAnalysisJob({
       interviewDate: now,
       durationSeconds,
       mediaExpiresAt,
+      questionPack: questionPack ? String(questionPack).slice(0, 8000) : null,
     },
   })
 
@@ -80,6 +82,10 @@ export function toAnalysisDoc(row) {
       metrics: result.communicationMetrics,
     }).breakdown
   }
+  const packCoverage =
+    row.questionPack && Array.isArray(transcript)
+      ? matchQuestionPack(transcript, row.questionPack)
+      : result.packCoverage || null
   return {
     id: row.id,
     orgId: row.orgId,
@@ -115,21 +121,25 @@ export function toAnalysisDoc(row) {
     sentiment: row.sentiment,
     decision: row.decision || null,
     notes: row.notes || '',
+    questionPack: row.questionPack || '',
+    packCoverage,
+    archivedAt: row.archivedAt ? row.archivedAt.toISOString() : null,
   }
 }
 
-export async function updateAnalysisReview(id, { decision, notes }) {
+export async function updateAnalysisReview(id, { decision, notes, questionPack }) {
   const data = {}
   if (decision !== undefined) {
     const allowed = ['Advance', 'Consider', 'Reject', '']
     if (!allowed.includes(decision) && decision !== null) {
-      const err = new Error('Decision must be Advance, Consider, Reject, or empty')
+      const err = new Error('Decision must be Advance, Consider, or Reject')
       err.status = 400
       throw err
     }
     data.decision = decision || null
   }
   if (notes !== undefined) data.notes = String(notes).slice(0, 4000)
+  if (questionPack !== undefined) data.questionPack = String(questionPack).slice(0, 8000) || null
   if (!Object.keys(data).length) return prisma.analysis.findUnique({ where: { id } })
   return prisma.analysis.update({ where: { id }, data })
 }

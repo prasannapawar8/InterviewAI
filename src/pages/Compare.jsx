@@ -38,7 +38,7 @@ function Column({ data, label, peerScore }) {
   const fillers = metric(data, 'fillers')
 
   return (
-    <Card>
+    <Card className="h-full">
       <p className="text-xs font-semibold uppercase tracking-wider text-ink-subtle">{label}</p>
       <h2 className="mt-1 text-xl font-bold text-ink">{data.overview?.candidate}</h2>
       <p className="text-sm text-ink-muted">{data.overview?.role}</p>

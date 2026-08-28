@@ -7,6 +7,7 @@ import { analyzeLive } from './ai/live.js'
 import { getObjectBuffer, putJson } from './storage.js'
 import { recordUsage } from './usage.service.js'
 import { PIPELINE_STAGES } from './pipeline.stages.js'
+import { matchQuestionPack } from './ai/features/questionPack.js'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 const STEP_MS = config.aiProvider === 'live' ? 400 : 1500
@@ -67,6 +68,9 @@ export async function processAnalysisJob({ analysisId }) {
     }
 
     const { durationSeconds: measured, rawStt, ...doc } = full
+    if (row.questionPack && Array.isArray(doc.transcript)) {
+      doc.packCoverage = matchQuestionPack(doc.transcript, row.questionPack)
+    }
     await prisma.analysis.update({
       where: { id: analysisId },
       data: {

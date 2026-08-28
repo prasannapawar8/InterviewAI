@@ -4,7 +4,7 @@ import fs from 'node:fs/promises'
 import { Router } from 'express'
 import multer from 'multer'
 import { config } from '../config.js'
-import { findAnalysis, listAnalyses, toListRow } from '../db.js'
+import { findAnalysis, listAnalyses, toListRow, archiveAnalysis, listCandidateHubs, findCandidateHub } from '../db.js'
 import { requireAuth, requireRecruiter } from '../middleware/auth.js'
 import { apiError, asyncHandler } from '../middleware/errors.js'
 import { createAnalysisJob, retryAnalysis, toAnalysisDoc, ensureLiveSummary, updateAnalysisReview } from '../services/analysis.service.js'
@@ -14,6 +14,7 @@ import { newId } from '../utils/ids.js'
 import { putObject } from '../services/storage.js'
 import { assertCanStartJob } from '../services/usage.service.js'
 import { rateLimit } from '../middleware/rateLimit.js'
+import { signShareToken, shareExpiryIso } from '../services/share.js'
 
 const router = Router()
 router.use(requireAuth)
@@ -37,6 +38,7 @@ function listQuery(req) {
     recommendation: req.query.recommendation,
     minScore: req.query.minScore,
     maxScore: req.query.maxScore,
+    includeArchived: req.query.archived === '1' || req.query.archived === 'true',
   }
 }
 
@@ -53,6 +55,16 @@ router.get('/export.csv', asyncHandler(async (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader('Content-Disposition', 'attachment; filename="intervai-analyses.csv"')
   res.send(csv)
+}))
+
+router.get('/candidates', asyncHandler(async (req, res) => {
+  res.json({ items: await listCandidateHubs(req.orgId) })
+}))
+
+router.get('/candidates/:name', asyncHandler(async (req, res) => {
+  const hub = await findCandidateHub(req.orgId, req.params.name)
+  if (!hub) return apiError(res, 404, 'No interviews for this candidate')
+  res.json(hub)
 }))
 
 router.post(
@@ -97,6 +109,7 @@ router.post(
         candidate: req.body?.candidate,
         role: req.body?.role,
         candidateConsent: true,
+        questionPack: req.body?.questionPack,
       })
       res.status(201).json({ id: doc.id, status: doc.status })
     } catch (err) {
@@ -126,6 +139,9 @@ router.get('/:id', asyncHandler(async (req, res) => {
     decision: doc.decision,
     notes: doc.notes,
     sentiment: doc.sentiment,
+    questionPack: doc.questionPack,
+    packCoverage: doc.packCoverage,
+    archivedAt: doc.archivedAt,
   })
 }))
 
@@ -139,9 +155,16 @@ router.patch(
       const updated = await updateAnalysisReview(a.id, {
         decision: req.body?.decision,
         notes: req.body?.notes,
+        questionPack: req.body?.questionPack,
       })
       const doc = toAnalysisDoc(updated)
-      res.json({ id: doc.id, decision: doc.decision, notes: doc.notes })
+      res.json({
+        id: doc.id,
+        decision: doc.decision,
+        notes: doc.notes,
+        questionPack: doc.questionPack,
+        packCoverage: doc.packCoverage,
+      })
     } catch (err) {
       if (err.status === 400) return apiError(res, 400, err.message)
       throw err
@@ -177,10 +200,42 @@ router.post(
   asyncHandler(async (req, res) => {
     const a = await findAnalysis(req.params.id)
     if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
-    if (a.status !== 'Failed') return apiError(res, 409, 'Only failed analyses can be retried')
+    if (a.status !== 'Failed' && a.status !== 'Completed') {
+      return apiError(res, 409, 'Only completed or failed analyses can be re-run')
+    }
     await assertCanStartJob(req.org)
     await retryAnalysis(a.id)
     res.json({ id: a.id, status: 'Processing' })
+  }),
+)
+
+router.post(
+  '/:id/share',
+  requireRecruiter,
+  asyncHandler(async (req, res) => {
+    const a = await findAnalysis(req.params.id)
+    if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
+    if (a.status !== 'Completed') return apiError(res, 409, 'Only completed reports can be shared')
+    if (a.archivedAt) return apiError(res, 409, 'Unarchive this analysis before sharing')
+    const token = signShareToken(a.id)
+    const origin = config.clientOrigin.replace(/\/$/, '')
+    res.json({
+      token,
+      url: `${origin}/share/${token}`,
+      expiresAt: shareExpiryIso(token),
+    })
+  }),
+)
+
+router.post(
+  '/:id/archive',
+  requireRecruiter,
+  asyncHandler(async (req, res) => {
+    const a = await findAnalysis(req.params.id)
+    if (!scoped(req, a)) return apiError(res, 404, 'Analysis not found')
+    const archived = req.body?.archived !== false
+    const updated = await archiveAnalysis(a.id, archived)
+    res.json({ id: updated.id, archivedAt: updated.archivedAt })
   }),
 )
 

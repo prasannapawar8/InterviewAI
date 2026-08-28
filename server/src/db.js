@@ -173,6 +173,7 @@ export function toListRow(a) {
     status: a.status,
     decision: a.decision || null,
     recommendation,
+    archived: Boolean(a.archivedAt),
     candidateTalkPct: talk.candidateTalkPct ?? null,
     starFound: star.found ?? null,
     starTotal: star.total ?? 4,
@@ -181,9 +182,10 @@ export function toListRow(a) {
   }
 }
 
-export async function listAnalyses(orgId, { limit, q, status, recommendation, minScore, maxScore } = {}) {
+export async function listAnalyses(orgId, { limit, q, status, recommendation, minScore, maxScore, includeArchived } = {}) {
   const where = { orgId }
   const and = []
+  if (!includeArchived) and.push({ archivedAt: null })
   if (q && String(q).trim()) {
     const term = String(q).trim()
     and.push({
@@ -225,4 +227,52 @@ export async function listAnalyses(orgId, { limit, q, status, recommendation, mi
 
 export async function findAnalysis(id) {
   return prisma.analysis.findUnique({ where: { id } })
+}
+
+export async function archiveAnalysis(id, archived) {
+  return prisma.analysis.update({
+    where: { id },
+    data: { archivedAt: archived ? new Date() : null },
+  })
+}
+
+export async function listCandidateHubs(orgId) {
+  const rows = await prisma.analysis.findMany({
+    where: { orgId, archivedAt: null },
+    orderBy: { createdAt: 'desc' },
+  })
+  const map = new Map()
+  for (const a of rows) {
+    const name = (a.candidate || 'Unknown').trim()
+    const key = name.toLowerCase()
+    if (!map.has(key)) {
+      map.set(key, {
+        name,
+        count: 0,
+        latestDate: a.interviewDate,
+        scores: [],
+        decision: a.decision || null,
+        interviews: [],
+      })
+    }
+    const g = map.get(key)
+    g.count += 1
+    if (a.score != null) g.scores.push(a.score)
+    if (!g.decision && a.decision) g.decision = a.decision
+    g.interviews.push(toListRow(a))
+  }
+  return [...map.values()].map((g) => ({
+    name: g.name,
+    count: g.count,
+    latestDate: g.latestDate.toISOString().slice(0, 10),
+    avgScore: g.scores.length ? Math.round(g.scores.reduce((s, n) => s + n, 0) / g.scores.length) : null,
+    decision: g.decision,
+    interviews: g.interviews,
+  }))
+}
+
+export async function findCandidateHub(orgId, name) {
+  const hubs = await listCandidateHubs(orgId)
+  const key = decodeURIComponent(name || '').trim().toLowerCase()
+  return hubs.find((h) => h.name.toLowerCase() === key) || null
 }

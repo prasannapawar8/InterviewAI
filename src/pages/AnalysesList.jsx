@@ -34,8 +34,9 @@ export default function AnalysesList() {
   const recommendation = params.get('recommendation') || ''
   const minScore = params.get('minScore') || ''
   const maxScore = params.get('maxScore') || ''
-  const filters = { q, status, recommendation, minScore, maxScore }
-  const hasFilters = Boolean(q || status || recommendation || minScore || maxScore)
+  const archived = params.get('archived') === '1'
+  const filters = { q, status, recommendation, minScore, maxScore, archived }
+  const hasFilters = Boolean(q || status || recommendation || minScore || maxScore || archived)
 
   useEffect(() => {
     setQDraft(q)
@@ -74,7 +75,7 @@ export default function AnalysesList() {
     return () => {
       active = false
     }
-  }, [q, status, recommendation, minScore, maxScore])
+  }, [q, status, recommendation, minScore, maxScore, archived])
 
   const setFilter = (key, value) => {
     const next = new URLSearchParams(params)
@@ -115,7 +116,7 @@ export default function AnalysesList() {
         subtitle="Search, filter, compare two candidates, or export metrics to CSV."
       />
 
-      <div className="sticky top-16 z-20 mb-3 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-line bg-surface/95 px-4 py-3 shadow-soft backdrop-blur-xl">
+      <div className="sticky top-16 z-20 mb-4 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-line bg-surface px-4 py-3 shadow-soft">
         <Button
           variant="outline"
           disabled={pick.length !== 2}
@@ -185,6 +186,15 @@ export default function AnalysesList() {
         <p className="mt-3 text-xs text-ink-subtle">
           Select two completed interviews, then Compare. A recruiter decision overrides the AI recommendation in filters.
         </p>
+        <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink-muted">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-line text-primary"
+            checked={archived}
+            onChange={(e) => setFilter('archived', e.target.checked ? '1' : '')}
+          />
+          Show archived
+        </label>
       </Card>
 
       <Card className="overflow-hidden">
@@ -258,7 +268,15 @@ function AnalysesPickTable({ data, pick, onToggle }) {
                     <span>
                       <span className="block font-medium text-ink hover:text-primary">{row.candidate}</span>
                       <span className="block text-xs font-normal text-ink-subtle">{row.role}</span>
+                      {row.archived ? <span className="text-xs text-warning">Archived</span> : null}
                     </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="mt-1 text-xs font-medium text-primary hover:underline"
+                    onClick={() => navigate(`/candidates/${encodeURIComponent(row.candidate)}`)}
+                  >
+                    All rounds
                   </button>
                 </td>
                 <td className="px-4 py-3">

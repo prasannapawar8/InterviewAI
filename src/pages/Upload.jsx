@@ -36,6 +36,9 @@ export default function Upload() {
   const [uploaded, setUploaded] = useState(false)
   const [analysisId, setAnalysisId] = useState(null)
   const [consent, setConsent] = useState(false)
+  const [candidate, setCandidate] = useState('')
+  const [role, setRole] = useState('')
+  const [questionPack, setQuestionPack] = useState('')
 
   const isVideo = file?.type.startsWith('video/')
 
@@ -47,6 +50,9 @@ export default function Upload() {
         const res = await analysisService.upload(f, {
           onProgress: setProgress,
           candidateConsent: true,
+          candidate,
+          role,
+          questionPack,
         })
         setAnalysisId(res.id)
         setUploaded(true)
@@ -59,7 +65,7 @@ export default function Upload() {
         setUploaded(false)
       }
     },
-    [toast],
+    [toast, candidate, role, questionPack],
   )
 
   const handleFile = useCallback(
@@ -116,6 +122,27 @@ export default function Upload() {
           {/* Dropzone */}
           {!file && (
             <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input
+                  value={candidate}
+                  onChange={(e) => setCandidate(e.target.value)}
+                  placeholder="Candidate name (optional)"
+                  className="h-10 rounded-xl border border-line bg-surface px-3 text-sm focus-ring"
+                />
+                <input
+                  value={role}
+                  onChange={(e) => setRole(e.target.value)}
+                  placeholder="Role (optional)"
+                  className="h-10 rounded-xl border border-line bg-surface px-3 text-sm focus-ring"
+                />
+              </div>
+              <textarea
+                value={questionPack}
+                onChange={(e) => setQuestionPack(e.target.value)}
+                rows={4}
+                placeholder="Optional question pack — one expected question per line"
+                className="w-full rounded-xl border border-line bg-surface p-3 text-sm focus-ring"
+              />
               <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-sm text-ink-muted">
                 <input
                   type="checkbox"
