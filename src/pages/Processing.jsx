@@ -27,11 +27,13 @@ const STEP_ICONS = {
 export default function Processing() {
   const navigate = useNavigate()
   const location = useLocation()
+  const analysisId = location.state?.analysisId
   const fileName = location.state?.fileName || 'interview-recording.mp4'
 
   const [progress, setProgress] = useState(0)
   const [activeStep, setActiveStep] = useState(0)
   const [done, setDone] = useState(false)
+  const [failed, setFailed] = useState(false)
   const started = useRef(false)
 
   useEffect(() => {
@@ -40,15 +42,17 @@ export default function Processing() {
 
     analysisService
       .processInterview({
+        analysisId,
         steps: processingSteps,
         onStep: setActiveStep,
         onProgress: setProgress,
       })
-      .then(() => {
+      .then((res) => {
         setDone(true)
-        setTimeout(() => navigate('/results/int_1042', { replace: true }), 1200)
+        setTimeout(() => navigate(`/results/${res.resultId}`, { replace: true }), 1200)
       })
-  }, [navigate])
+      .catch(() => setFailed(true))
+  }, [analysisId, navigate])
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-surface-2 px-4">
@@ -100,11 +104,57 @@ export default function Processing() {
           </div>
 
           <h1 className="mt-8 text-2xl font-bold text-ink">
-            {done ? 'Analysis complete!' : 'Analyzing your interview'}
+            {failed
+              ? 'Something went wrong'
+              : done
+                ? 'Analysis complete!'
+                : 'Analyzing your interview'}
           </h1>
           <p className="mt-2 max-w-sm truncate text-sm text-ink-muted">
-            {done ? 'Redirecting to your results…' : fileName}
+            {failed
+              ? 'The pipeline could not complete. You can retry this analysis.'
+              : done
+                ? 'Redirecting to your results…'
+                : fileName}
           </p>
+          {failed && (
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <button
+                type="button"
+                className="rounded-xl bg-brand-gradient px-5 py-2.5 text-sm font-semibold text-white shadow-glow"
+                onClick={async () => {
+                  try {
+                    setFailed(false)
+                    setDone(false)
+                    setProgress(0)
+                    setActiveStep(0)
+                    await analysisService.retry(analysisId)
+                    started.current = false
+                    started.current = true
+                    const res = await analysisService.processInterview({
+                      analysisId,
+                      steps: processingSteps,
+                      onStep: setActiveStep,
+                      onProgress: setProgress,
+                    })
+                    setDone(true)
+                    setTimeout(() => navigate(`/results/${res.resultId}`, { replace: true }), 1200)
+                  } catch {
+                    setFailed(true)
+                  }
+                }}
+              >
+                Retry analysis
+              </button>
+              <button
+                type="button"
+                className="rounded-xl border border-line px-5 py-2.5 text-sm font-semibold text-ink"
+                onClick={() => navigate('/upload')}
+              >
+                Upload another file
+              </button>
+            </div>
+          )}
 
           {/* progress percentage */}
           <div className="mt-6 w-full max-w-xs">

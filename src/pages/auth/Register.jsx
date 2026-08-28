@@ -13,7 +13,7 @@ export default function Register() {
   const toast = useToast()
   const navigate = useNavigate()
 
-  const [values, setValues] = useState({ name: '', email: '', password: '', confirm: '' })
+  const [values, setValues] = useState({ name: '', email: '', password: '', confirm: '', orgName: '' })
   const [errors, setErrors] = useState({})
   const [agree, setAgree] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -22,6 +22,7 @@ export default function Register() {
 
   const schema = {
     name: [validators.required('Full name is required'), validators.minLength(2)],
+    orgName: [validators.required('Workspace name is required'), validators.minLength(2)],
     email: [validators.required('Email is required'), validators.email()],
     password: [
       validators.required('Password is required'),
@@ -77,6 +78,15 @@ export default function Register() {
           onChange={onChange}
           error={errors.name}
           autoComplete="name"
+        />
+        <Input
+          label="Workspace name"
+          name="orgName"
+          placeholder="Acme Recruiting"
+          icon={User}
+          value={values.orgName}
+          onChange={onChange}
+          error={errors.orgName}
         />
         <Input
           label="Email address"

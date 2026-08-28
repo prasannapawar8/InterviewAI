@@ -1,0 +1,134 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipRole {
+  owner
+  admin
+  recruiter
+  viewer
+}
+
+enum AnalysisStatus {
+  Processing
+  Completed
+  Failed
+}
+
+model Organization {
+  id                   String        @id
+  name                 String
+  slug                 String        @unique
+  plan                 String        @default("starter")
+  minutesQuota         Int           @default(120)
+  maxConcurrentJobs    Int           @default(2)
+  maxDurationSeconds   Int           @default(3600)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  createdAt            DateTime      @default(now())
+  members              Membership[]
+  analyses             Analysis[]
+  invites              Invite[]
+  usageEvents          UsageEvent[]
+}
+
+model User {
+  id                     String         @id
+  name                   String
+  email                  String         @unique
+  jobTitle               String         @default("")
+  company                String         @default("")
+  avatar                 String?
+  joinedAt               DateTime       @default(now())
+  passwordHash           String
+  preferences            Json
+  passwordResetTokenHash String?
+  passwordResetExpires   DateTime?
+  memberships            Membership[]
+  createdAnalyses        Analysis[]     @relation("CreatedAnalyses")
+  refreshTokens          RefreshToken[]
+  invitesSent            Invite[]
+}
+
+model Membership {
+  id     String         @id
+  userId String
+  orgId  String
+  role   MembershipRole
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org    Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, orgId])
+  @@index([orgId])
+}
+
+model Invite {
+  id          String         @id
+  orgId       String
+  email       String
+  role        MembershipRole
+  tokenHash   String         @unique
+  expiresAt   DateTime
+  invitedById String
+  org         Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  invitedBy   User           @relation(fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([orgId, email])
+}
+
+model Analysis {
+  id               String         @id
+  orgId            String
+  createdById      String
+  status           AnalysisStatus @default(Processing)
+  progress         Int            @default(0)
+  stage            String?
+  errorCode        String?
+  fileName         String?
+  fileKey          String?
+  rawTranscriptKey String?
+  candidateConsent Boolean        @default(false)
+  candidate        String
+  role             String
+  interviewDate    DateTime
+  durationSeconds  Int
+  score            Int?
+  sentiment        String?
+  result           Json?
+  createdAt        DateTime       @default(now())
+  mediaExpiresAt   DateTime?
+  org              Organization   @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  createdBy        User           @relation("CreatedAnalyses", fields: [createdById], references: [id])
+
+  @@index([orgId, createdAt])
+  @@index([mediaExpiresAt])
+}
+
+model UsageEvent {
+  id         String       @id
+  orgId      String
+  analysisId String?
+  minutes    Int
+  tokens     Int          @default(0)
+  createdAt  DateTime     @default(now())
+  org        Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId, createdAt])
+}
+
+model RefreshToken {
+  id        String   @id
+  userId    String
+  tokenHash String   @unique
+  orgId     String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}

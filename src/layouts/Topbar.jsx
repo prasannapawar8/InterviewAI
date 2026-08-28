@@ -7,7 +7,7 @@ import Avatar from '../components/ui/Avatar'
 import { useAuth } from '../context/AuthContext'
 
 export default function Topbar({ onMenuClick }) {
-  const { user, logout } = useAuth()
+  const { user, memberships = [], logout, switchOrg } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef(null)
@@ -67,6 +67,11 @@ export default function Topbar({ onMenuClick }) {
             <span className="hidden text-sm font-medium text-ink sm:block">
               {user?.name?.split(' ')[0]}
             </span>
+            {user?.orgName && (
+              <span className="hidden max-w-[140px] truncate text-xs text-ink-muted lg:block">
+                {user.orgName}
+              </span>
+            )}
             <ChevronDown className="hidden h-4 w-4 text-ink-subtle sm:block" />
           </button>
 
@@ -82,7 +87,26 @@ export default function Topbar({ onMenuClick }) {
                 <div className="border-b border-line p-3">
                   <p className="truncate text-sm font-semibold text-ink">{user?.name}</p>
                   <p className="truncate text-xs text-ink-muted">{user?.email}</p>
+                  {user?.orgName && <p className="truncate text-xs text-ink-subtle">{user.orgName}</p>}
                 </div>
+            {memberships.length > 1 && (
+              <div className="border-b border-line p-1.5">
+                {memberships.map((m) => (
+                  <button
+                    key={m.orgId}
+                    onClick={async () => {
+                      setMenuOpen(false)
+                      await switchOrg(m.orgId)
+                      window.location.reload()
+                    }}
+                    className="flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-sm text-ink-muted hover:bg-surface-3 hover:text-ink"
+                  >
+                    <span className="truncate">{m.name}</span>
+                    {m.orgId === user?.orgId && <span className="text-xs text-primary">Current</span>}
+                  </button>
+                ))}
+              </div>
+            )}
                 <div className="p-1.5">
                   <Link
                     to="/settings"

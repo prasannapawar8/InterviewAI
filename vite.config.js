@@ -13,6 +13,14 @@ export default defineConfig({
   server: {
     port: 5173,
     open: true,
+    // Proxy API calls to the IntervAI backend (see server/)
+    proxy: {
+      '/api': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:4000',
+        changeOrigin: true,
+        cookieDomainRewrite: 'localhost',
+      },
+    },
   },
   build: {
     rollupOptions: {

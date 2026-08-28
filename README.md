@@ -48,7 +48,7 @@ npm run build
 npm run preview
 ```
 
-> **Demo login:** any valid email + a 6+ character password. Auth is mocked client-side.
+> **Demo login:** `aarav.mehta@example.com` / `password123` (seeded by the backend — see below).
 
 ## 📁 Project Structure
 
@@ -87,11 +87,95 @@ variables (see `src/index.css` and `tailwind.config.js`).
 Semantic surfaces (`surface`, `surface-2`, `ink`, `line`, …) automatically adapt between light and
 dark themes, so components are written once and theme correctly.
 
-## 🔌 Wiring up a real backend
+## 🖥️ Backend (multi-tenant)
 
-The UI talks to a mock service layer in `src/services/api.js`. Each method returns a promise with
-simulated latency. To connect a real API, replace the bodies with `fetch`/`axios` calls — the
-component contracts stay the same.
+The API in [`server/`](./server) is a multi-tenant SaaS backend: Postgres, org memberships + RBAC,
+JWT access tokens plus an httpOnly refresh cookie, S3-compatible or local object storage, a
+BullMQ worker (Redis) or in-process queue, usage quotas, retention sweeps, Stripe checkout, and
+an AI adapter (`AI_PROVIDER=mock` or `live`).
+
+### Local infrastructure
+
+```bash
+docker compose up -d postgres redis
+# Postgres is published on host port 5434 (see docker-compose.yml) because 5432 is already in use.
+cd server
+copy .env.example .env   # Windows; use cp on macOS/Linux
+npm install
+npx prisma generate
+npx prisma db push
+npm test
+npm start                # API on :4000 (also runs an in-process worker if REDIS_URL is unset)
+
+# Optional dedicated worker when Redis is running:
+npm run worker
+```
+
+Frontend (repo root): `npm install && npm run dev` — Vite proxies `/api` to port 4000.
+
+**Demo login:** `aarav.mehta@example.com` / `password123` (seeded on first boot).
+
+Set `AI_PROVIDER=live` plus `OPENAI_API_KEY` and/or `DEEPGRAM_API_KEY` for real STT + LLM reports.
+Leave `S3_BUCKET` empty to store recordings on disk under `server/data/uploads`.
+
+### Production deploy
+
+- Run `Dockerfile` (API) and `Dockerfile.worker` (pipeline) against managed Postgres + Redis.
+- Set `NODE_ENV=production`, `DATABASE_URL`, `JWT_SECRET`, `CLIENT_ORIGIN`, `COOKIE_SECURE=true`,
+  and CORS origin to the real frontend URL. Run `npx prisma db push` or `prisma migrate deploy`.
+- Point the Vite build at the API with `VITE_API_URL=https://api.example.com/api`.
+- Optional: `STRIPE_*`, `RESEND_API_KEY`, `S3_*`. Logs are JSON on stdout (`X-Request-Id` on every response).
+
+### API overview
+
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| `POST` | `/api/auth/register` | Create user + org → `{ user, token }` + refresh cookie |
+| `POST` | `/api/auth/login` | Sign in |
+| `POST` | `/api/auth/refresh` | Rotate refresh cookie → new access token |
+| `POST` | `/api/auth/logout` | Clear refresh cookie |
+| `POST` | `/api/auth/forgot-password` | Email a reset link (always OK) |
+| `POST` | `/api/auth/reset-password` | Set password from token |
+| `GET`  | `/api/users/me` | Profile + memberships |
+| `PATCH`| `/api/users/me` | Update profile |
+| `POST` | `/api/users/me/password` | Change password |
+| `GET`  | `/api/orgs/me` | Workspace, members, usage |
+| `POST` | `/api/orgs/me/invites` | Invite a teammate (admin) |
+| `GET`  | `/api/dashboard/stats` | Org-scoped stat cards |
+| `GET`  | `/api/dashboard/overview` | 12-month analytics series |
+| `GET`  | `/api/dashboard/recent` | Recent analyses (`?limit=6`) |
+| `GET`  | `/api/analyses` | List analyses (`?limit=20`) |
+| `POST` | `/api/analyses` | Upload (`file` + `candidateConsent=true`) |
+| `GET`  | `/api/analyses/:id` | Full analysis document |
+| `GET`  | `/api/analyses/:id/status` | Pipeline progress |
+| `POST` | `/api/analyses/:id/retry` | Re-queue a failed job |
+| `GET`  | `/api/analyses/:id/report.pdf` | PDF report |
+| `GET`  | `/api/billing/usage` | Quota snapshot |
+| `POST` | `/api/billing/checkout` | Stripe Checkout session |
+| `POST` | `/api/billing/webhook` | Stripe webhooks (raw body) |
+
+Authenticated routes expect `Authorization: Bearer <access token>` and send cookies with
+`credentials: include`. Recruiter/admin/owner may upload; viewers cannot. Uploads require
+candidate consent, are quota- and concurrency-capped, and media is deleted after
+`MEDIA_RETENTION_DAYS`.
+
+### AI pipeline
+
+`AI_PROVIDER=mock` uses the deterministic generator in `server/src/services/ai/engine.js`.
+`live` transcribes with Deepgram or Whisper, derives sentiment/confidence/metrics from timestamps,
+and asks an LLM for the summary JSON the Results UI already expects.
+
+```
+server/
+├── prisma/                # Postgres schema
+├── src/
+│   ├── index.js           # API
+│   ├── worker.js          # BullMQ worker
+│   ├── db.js              # Prisma helpers + seed
+│   ├── routes/            # auth, users, orgs, dashboard, analyses, billing
+│   └── services/          # storage, queue, usage, retention, email, ai/
+└── test/                  # result-contract tests
+```
 
 ## 📄 License
 

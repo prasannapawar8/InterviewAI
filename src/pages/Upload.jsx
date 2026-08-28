@@ -17,6 +17,7 @@ import Button from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
 import ProgressBar from '../components/ui/ProgressBar'
 import { useToast } from '../context/ToastContext'
+import { analysisService } from '../services/api'
 import { formatBytes } from '../utils/format'
 import { cn } from '../utils/cn'
 
@@ -33,26 +34,40 @@ export default function Upload() {
   const [previewUrl, setPreviewUrl] = useState(null)
   const [progress, setProgress] = useState(0)
   const [uploaded, setUploaded] = useState(false)
+  const [analysisId, setAnalysisId] = useState(null)
+  const [consent, setConsent] = useState(false)
 
   const isVideo = file?.type.startsWith('video/')
 
-  const simulateUpload = useCallback(() => {
-    setProgress(0)
-    setUploaded(false)
-    let p = 0
-    const id = setInterval(() => {
-      p += Math.random() * 18 + 6
-      if (p >= 100) {
-        p = 100
-        clearInterval(id)
+  const startUpload = useCallback(
+    async (f) => {
+      setProgress(0)
+      setUploaded(false)
+      try {
+        const res = await analysisService.upload(f, {
+          onProgress: setProgress,
+          candidateConsent: true,
+        })
+        setAnalysisId(res.id)
         setUploaded(true)
+        toast.success('Upload complete', 'Starting the AI analysis pipeline.')
+      } catch (err) {
+        toast.error('Upload failed', err.message)
+        setFile(null)
+        setPreviewUrl(null)
+        setProgress(0)
+        setUploaded(false)
       }
-      setProgress(Math.round(p))
-    }, 220)
-  }, [])
+    },
+    [toast],
+  )
 
   const handleFile = useCallback(
     (f) => {
+      if (!consent) {
+        toast.error('Consent required', 'Confirm you have the candidate’s permission to analyze this recording.')
+        return
+      }
       if (!f) return
       const valid = ACCEPTED.some((t) => f.type.startsWith(t))
       if (!valid) {
@@ -65,9 +80,9 @@ export default function Upload() {
       }
       setFile(f)
       setPreviewUrl(URL.createObjectURL(f))
-      simulateUpload()
+      startUpload(f)
     },
-    [simulateUpload, toast],
+    [consent, startUpload, toast],
   )
 
   const onDrop = (e) => {
@@ -82,10 +97,11 @@ export default function Upload() {
     setPreviewUrl(null)
     setProgress(0)
     setUploaded(false)
+    setAnalysisId(null)
   }
 
   const analyze = () => {
-    navigate('/processing', { state: { fileName: file?.name } })
+    navigate('/processing', { state: { analysisId, fileName: file?.name } })
   }
 
   return (
@@ -99,7 +115,20 @@ export default function Upload() {
         <div className="lg:col-span-2">
           {/* Dropzone */}
           {!file && (
-            <div
+            <div className="space-y-4">
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-line bg-surface p-4 text-sm text-ink-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 h-4 w-4 rounded border-line text-primary focus-ring"
+                  checked={consent}
+                  onChange={(e) => setConsent(e.target.checked)}
+                />
+                <span>
+                  I confirm the candidate consented to recording and analysis. Audio is personal data,
+                  stored encrypted, and deleted after the workspace retention period.
+                </span>
+              </label>
+              <div
               onDragOver={(e) => {
                 e.preventDefault()
                 setDragging(true)
@@ -145,6 +174,7 @@ export default function Upload() {
                 className="hidden"
                 onChange={(e) => handleFile(e.target.files?.[0])}
               />
+            </div>
             </div>
           )}
 

@@ -19,17 +19,25 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState([])
   const [recent, setRecent] = useState([])
+  const [overview, setOverview] = useState([])
 
   useEffect(() => {
     let active = true
-    Promise.all([dashboardService.getStats(), dashboardService.getRecentAnalyses()]).then(
-      ([s, r]) => {
+    Promise.all([
+      dashboardService.getStats(),
+      dashboardService.getRecentAnalyses(),
+      dashboardService.getOverview(),
+    ])
+      .then(([s, r, o]) => {
         if (!active) return
         setStats(s)
         setRecent(r)
+        setOverview(o)
         setLoading(false)
-      },
-    )
+      })
+      .catch(() => {
+        if (active) setLoading(false)
+      })
     return () => {
       active = false
     }
@@ -65,7 +73,7 @@ export default function Dashboard() {
             subtitle="Interviews & average confidence over the last 12 months"
             action={<Badge variant="primary">+12.5% this month</Badge>}
           />
-          {loading ? <ChartSkeleton className="h-72" /> : <AnalyticsAreaChart />}
+          {loading ? <ChartSkeleton className="h-72" /> : <AnalyticsAreaChart data={overview} />}
         </Card>
 
         <Card>

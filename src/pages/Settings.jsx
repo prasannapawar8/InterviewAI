@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { User, Lock, Bell, Palette, Mail, Briefcase, Building2, Monitor, Sun, Moon, Camera } from 'lucide-react'
+import { User, Lock, Bell, Palette, Mail, Briefcase, Building2, Monitor, Sun, Moon, Camera, Users } from 'lucide-react'
 import PageTransition from '../components/ui/PageTransition'
 import PageHeader from '../components/ui/PageHeader'
 import { Card } from '../components/ui/Card'
@@ -11,12 +11,14 @@ import Avatar from '../components/ui/Avatar'
 import { useAuth } from '../context/AuthContext'
 import { useTheme } from '../context/ThemeContext'
 import { useToast } from '../context/ToastContext'
+import { authService, billingService, orgService } from '../services/api'
 import { validate, validators, passwordStrength } from '../utils/validation'
 import { cn } from '../utils/cn'
 
 const TABS = [
   { id: 'profile', label: 'Profile', icon: User },
   { id: 'password', label: 'Password', icon: Lock },
+  { id: 'workspace', label: 'Workspace', icon: Building2 },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'appearance', label: 'Appearance', icon: Palette },
 ]
@@ -34,14 +36,18 @@ function ProfileTab() {
 
   const onChange = (e) => setForm((f) => ({ ...f, [e.target.name]: e.target.value }))
 
-  const save = (e) => {
+  const save = async (e) => {
     e.preventDefault()
     setSaving(true)
-    setTimeout(() => {
+    try {
+      await authService.updateProfile(form)
       updateProfile(form)
-      setSaving(false)
       toast.success('Profile updated', 'Your changes have been saved.')
-    }, 800)
+    } catch (err) {
+      toast.error('Could not save', err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -93,7 +99,7 @@ function PasswordTab() {
     if (errors[e.target.name]) setErrors((er) => ({ ...er, [e.target.name]: '' }))
   }
 
-  const save = (e) => {
+  const save = async (e) => {
     e.preventDefault()
     const errs = validate(form, {
       current: [validators.required('Enter your current password')],
@@ -103,11 +109,15 @@ function PasswordTab() {
     setErrors(errs)
     if (Object.keys(errs).length) return
     setSaving(true)
-    setTimeout(() => {
-      setSaving(false)
+    try {
+      await authService.changePassword({ current: form.current, next: form.next })
       setForm({ current: '', next: '', confirm: '' })
       toast.success('Password changed', 'Your password has been updated successfully.')
-    }, 900)
+    } catch (err) {
+      toast.error('Could not update password', err.message)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
@@ -169,6 +179,131 @@ function PasswordTab() {
         </div>
       </form>
     </Card>
+  )
+}
+
+function WorkspaceTab() {
+  const { user } = useAuth()
+  const toast = useToast()
+  const [org, setOrg] = useState(null)
+  const [members, setMembers] = useState([])
+  const [billing, setBilling] = useState(null)
+  const [name, setName] = useState('')
+  const [invite, setInvite] = useState({ email: '', role: 'recruiter' })
+  const [saving, setSaving] = useState(false)
+  const canAdmin = ['owner', 'admin'].includes(user?.membershipRole)
+
+  useEffect(() => {
+    orgService.get().then((data) => {
+      setOrg(data.org)
+      setName(data.org.name)
+      setMembers(data.members || [])
+      setBilling(data.billing)
+    }).catch((err) => toast.error('Could not load workspace', err.message))
+  }, [toast])
+
+  const saveName = async (e) => {
+    e.preventDefault()
+    setSaving(true)
+    try {
+      const data = await orgService.update({ name })
+      setOrg(data.org)
+      toast.success('Workspace updated', '')
+    } catch (err) {
+      toast.error('Could not update', err.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const sendInvite = async (e) => {
+    e.preventDefault()
+    try {
+      await orgService.invite(invite)
+      setInvite({ email: '', role: 'recruiter' })
+      toast.success('Invite sent', `We emailed ${invite.email}`)
+    } catch (err) {
+      toast.error('Invite failed', err.message)
+    }
+  }
+
+  const startCheckout = async () => {
+    try {
+      const data = await billingService.checkout()
+      if (data.url) window.location.href = data.url
+      else toast.info('Billing', data.message || 'Stripe is not configured on this environment.')
+    } catch (err) {
+      toast.error('Checkout failed', err.message)
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <Card>
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-ink">
+          <Building2 className="h-5 w-5 text-primary" /> Workspace
+        </h3>
+        <p className="mt-1 text-sm text-ink-muted">
+          You are {user?.membershipRole || 'a member'} of {org?.name || 'this organization'}.
+        </p>
+        {canAdmin && (
+          <form onSubmit={saveName} className="mt-5 flex flex-col gap-3 sm:flex-row">
+            <Input label="Organization name" value={name} onChange={(e) => setName(e.target.value)} />
+            <div className="flex items-end">
+              <Button variant="gradient" type="submit" loading={saving}>Save</Button>
+            </div>
+          </form>
+        )}
+      </Card>
+
+      <Card>
+        <h3 className="flex items-center gap-2 text-lg font-semibold text-ink">
+          <Users className="h-5 w-5 text-primary" /> Team
+        </h3>
+        <ul className="mt-4 divide-y divide-line">
+          {members.map((m) => (
+            <li key={m.userId} className="flex items-center justify-between py-3 text-sm">
+              <span className="text-ink">{m.name} <span className="text-ink-muted">({m.email})</span></span>
+              <span className="capitalize text-ink-muted">{m.role}</span>
+            </li>
+          ))}
+        </ul>
+        {canAdmin && (
+          <form onSubmit={sendInvite} className="mt-5 grid gap-3 sm:grid-cols-[1fr_140px_auto]">
+            <Input label="Invite email" type="email" value={invite.email} onChange={(e) => setInvite((i) => ({ ...i, email: e.target.value }))} />
+            <label className="block text-sm font-medium text-ink">
+              Role
+              <select
+                className="mt-1.5 h-11 w-full rounded-xl border border-line bg-surface px-3 text-sm"
+                value={invite.role}
+                onChange={(e) => setInvite((i) => ({ ...i, role: e.target.value }))}
+              >
+                <option value="admin">Admin</option>
+                <option value="recruiter">Recruiter</option>
+                <option value="viewer">Viewer</option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <Button variant="gradient" type="submit">Send invite</Button>
+            </div>
+          </form>
+        )}
+      </Card>
+
+      <Card>
+        <h3 className="text-lg font-semibold text-ink">Usage & billing</h3>
+        {billing && (
+          <p className="mt-2 text-sm text-ink-muted">
+            Plan <span className="font-semibold text-ink">{billing.plan}</span> · {billing.minutesUsed} / {billing.minutesQuota} minutes used this month.
+          </p>
+        )}
+        {canAdmin && (
+          <Button className="mt-4" variant="outline" type="button" onClick={startCheckout}>
+            Upgrade with Stripe
+          </Button>
+        )}
+      </Card>
+    </div>
   )
 }
 
@@ -299,6 +434,7 @@ export default function Settings() {
         <motion.div key={tab} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
           {tab === 'profile' && <ProfileTab />}
           {tab === 'password' && <PasswordTab />}
+          {tab === 'workspace' && <WorkspaceTab />}
           {tab === 'notifications' && <NotificationsTab />}
           {tab === 'appearance' && <AppearanceTab />}
         </motion.div>
