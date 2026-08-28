@@ -75,6 +75,7 @@ export default function Results() {
   const [packDraft, setPackDraft] = useState('')
   const [sharing, setSharing] = useState(false)
   const [rerunning, setRerunning] = useState(false)
+  const [archiving, setArchiving] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -166,12 +167,21 @@ export default function Results() {
 
   const archiveIt = async () => {
     if (!data) return
+    const hide = !data.archivedAt
+    setArchiving(true)
     try {
-      await analysisService.archive(data.overview.id, true)
-      toast.success('Archived', 'This analysis is hidden from the default list.')
-      navigate('/results')
+      const res = await analysisService.archive(data.overview.id, hide)
+      setData((d) => ({ ...d, archivedAt: res.archivedAt || null }))
+      if (hide) {
+        toast.success('Archived', 'Moved to Archive. Open Archive in the sidebar to restore it.')
+        navigate('/results?archived=1')
+      } else {
+        toast.success('Restored', 'This analysis is back in the main list.')
+      }
     } catch (err) {
-      toast.error('Could not archive', err.message)
+      toast.error(hide ? 'Could not archive' : 'Could not restore', err.message)
+    } finally {
+      setArchiving(false)
     }
   }
 
@@ -346,6 +356,12 @@ export default function Results() {
                   {canReview && (
                     <Button variant="onBrand" onClick={copyShareLink} loading={sharing}>
                       <Share2 className="h-4 w-4" /> Share
+                    </Button>
+                  )}
+                  {canReview && (
+                    <Button variant="onBrand" onClick={archiveIt} loading={archiving}>
+                      <Archive className="h-4 w-4" />
+                      {data.archivedAt ? 'Restore' : 'Archive'}
                     </Button>
                   )}
                 </div>
@@ -685,8 +701,8 @@ export default function Results() {
                 <Button variant="outline" onClick={rerun} loading={rerunning}>
                   <RotateCcw className="h-4 w-4" /> Re-analyze
                 </Button>
-                <Button variant="outline" onClick={archiveIt}>
-                  <Archive className="h-4 w-4" /> Archive
+                <Button variant="outline" onClick={archiveIt} loading={archiving}>
+                  <Archive className="h-4 w-4" /> {data.archivedAt ? 'Restore from archive' : 'Move to archive'}
                 </Button>
               </div>
             </>

@@ -185,7 +185,8 @@ export function toListRow(a) {
 export async function listAnalyses(orgId, { limit, q, status, recommendation, minScore, maxScore, includeArchived } = {}) {
   const where = { orgId }
   const and = []
-  if (!includeArchived) and.push({ archivedAt: null })
+  if (includeArchived) and.push({ archivedAt: { not: null } })
+  else and.push({ archivedAt: null })
   if (q && String(q).trim()) {
     const term = String(q).trim()
     and.push({

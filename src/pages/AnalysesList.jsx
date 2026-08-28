@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { Columns2, Download, Search, UploadCloud } from 'lucide-react'
+import { Columns2, Download, Search, UploadCloud, Archive, ArchiveRestore } from 'lucide-react'
 import PageTransition from '../components/ui/PageTransition'
 import PageHeader from '../components/ui/PageHeader'
 import Button from '../components/ui/Button'
@@ -10,6 +10,7 @@ import Avatar from '../components/ui/Avatar'
 import { TableSkeleton } from '../components/ui/Skeleton'
 import { analysisService } from '../services/api'
 import { useToast } from '../context/ToastContext'
+import { useAuth } from '../context/AuthContext'
 import { cn } from '../utils/cn'
 
 function ScorePill({ score }) {
@@ -22,10 +23,13 @@ function ScorePill({ score }) {
 export default function AnalysesList() {
   const navigate = useNavigate()
   const toast = useToast()
+  const { user } = useAuth()
+  const canArchive = ['owner', 'admin', 'recruiter'].includes(user?.membershipRole)
   const [params, setParams] = useSearchParams()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [csvLoading, setCsvLoading] = useState(false)
+  const [busyId, setBusyId] = useState('')
   const [pick, setPick] = useState([])
   const [qDraft, setQDraft] = useState(params.get('q') || '')
 
@@ -36,7 +40,7 @@ export default function AnalysesList() {
   const maxScore = params.get('maxScore') || ''
   const archived = params.get('archived') === '1'
   const filters = { q, status, recommendation, minScore, maxScore, archived }
-  const hasFilters = Boolean(q || status || recommendation || minScore || maxScore || archived)
+  const hasFilters = Boolean(q || status || recommendation || minScore || maxScore)
 
   useEffect(() => {
     setQDraft(q)
@@ -109,11 +113,32 @@ export default function AnalysesList() {
     }
   }
 
+  const setArchived = async (row, archived) => {
+    setBusyId(row.id)
+    try {
+      await analysisService.archive(row.id, archived)
+      setItems((prev) => prev.filter((r) => r.id !== row.id))
+      setPick((prev) => prev.filter((id) => id !== row.id))
+      toast.success(
+        archived ? 'Moved to archive' : 'Restored',
+        archived ? `${row.candidate} is in Archive.` : `${row.candidate} is back in Analysis Results.`,
+      )
+    } catch (err) {
+      toast.error(archived ? 'Could not archive' : 'Could not restore', err.message)
+    } finally {
+      setBusyId('')
+    }
+  }
+
   return (
     <PageTransition>
       <PageHeader
-        title="Analyses"
-        subtitle="Search, filter, compare two candidates, or export metrics to CSV."
+        title={archived ? 'Archive' : 'Analyses'}
+        subtitle={
+          archived
+            ? 'Interviews you have archived. Restore one to put it back in the main list.'
+            : 'Search, filter, archive, compare two candidates, or export metrics to CSV.'
+        }
       />
 
       <div className="sticky top-16 z-20 mb-4 flex flex-wrap items-center justify-end gap-2 rounded-2xl border border-line bg-surface px-4 py-3 shadow-soft">
@@ -184,7 +209,7 @@ export default function AnalysesList() {
           </div>
         </div>
         <p className="mt-3 text-xs text-ink-subtle">
-          Select two completed interviews, then Compare. A recruiter decision overrides the AI recommendation in filters.
+          Select two completed interviews, then Compare. Use Archive on a row to hide it from this list.
         </p>
         <label className="mt-3 flex cursor-pointer items-center gap-2 text-xs text-ink-muted">
           <input
@@ -193,7 +218,7 @@ export default function AnalysesList() {
             checked={archived}
             onChange={(e) => setFilter('archived', e.target.checked ? '1' : '')}
           />
-          Show archived
+          View archived interviews
         </label>
       </Card>
 
@@ -205,27 +230,47 @@ export default function AnalysesList() {
         ) : items.length === 0 ? (
           <div className="px-6 py-14 text-center">
             <p className="text-base font-semibold text-ink">
-              {hasFilters ? 'No interviews match these filters' : 'No analyses yet'}
+              {archived && !hasFilters
+                ? 'Archive is empty'
+                : hasFilters
+                  ? 'No interviews match these filters'
+                  : 'No analyses yet'}
             </p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
               {hasFilters
                 ? 'Clear a filter or search a different candidate name.'
-                : 'Upload a recording to generate a transcript, score, and hiring notes.'}
+                : archived
+                  ? 'Archive an interview from Analysis Results or from the report header.'
+                  : 'Upload a recording to generate a transcript, score, and hiring notes.'}
             </p>
-            <Button variant="gradient" className="mt-6" onClick={() => navigate('/upload')}>
-              <UploadCloud className="h-4 w-4" />
-              Upload interview
-            </Button>
+            {archived && !hasFilters ? (
+              <Button variant="outline" className="mt-6" onClick={() => setFilter('archived', '')}>
+                Back to analyses
+              </Button>
+            ) : (
+              <Button variant="gradient" className="mt-6" onClick={() => navigate('/upload')}>
+                <UploadCloud className="h-4 w-4" />
+                Upload interview
+              </Button>
+            )}
           </div>
         ) : (
-          <AnalysesPickTable data={items} pick={pick} onToggle={togglePick} />
+          <AnalysesPickTable
+            data={items}
+            pick={pick}
+            onToggle={togglePick}
+            canArchive={canArchive}
+            busyId={busyId}
+            viewingArchived={archived}
+            onSetArchived={setArchived}
+          />
         )}
       </Card>
     </PageTransition>
   )
 }
 
-function AnalysesPickTable({ data, pick, onToggle }) {
+function AnalysesPickTable({ data, pick, onToggle, canArchive, busyId, viewingArchived, onSetArchived }) {
   const navigate = useNavigate()
   return (
     <div className="overflow-x-auto">
@@ -238,6 +283,7 @@ function AnalysesPickTable({ data, pick, onToggle }) {
             <th className="px-4 py-3">Recommendation</th>
             <th className="px-4 py-3">Status</th>
             <th className="px-4 py-3">Date</th>
+            {canArchive ? <th className="px-4 py-3 text-right">Archive</th> : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-line">
@@ -289,11 +335,31 @@ function AnalysesPickTable({ data, pick, onToggle }) {
                   <Badge>{row.status}</Badge>
                 </td>
                 <td className="px-4 py-3 text-ink-muted">{row.date}</td>
+                {canArchive ? (
+                  <td className="px-4 py-3 text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      loading={busyId === row.id}
+                      onClick={() => onSetArchived(row, !viewingArchived && !row.archived)}
+                    >
+                      {viewingArchived || row.archived ? (
+                        <>
+                          <ArchiveRestore className="h-3.5 w-3.5" /> Restore
+                        </>
+                      ) : (
+                        <>
+                          <Archive className="h-3.5 w-3.5" /> Archive
+                        </>
+                      )}
+                    </Button>
+                  </td>
+                ) : null}
               </tr>
             )
           })}
         </tbody>
       </table>
-    </div>
+            </div>
   )
 }

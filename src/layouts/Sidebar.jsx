@@ -1,4 +1,4 @@
-import { NavLink, Link, useNavigate } from 'react-router-dom'
+import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   LayoutDashboard,
@@ -9,6 +9,7 @@ import {
   X,
   Columns2,
   Users,
+  Archive,
 } from 'lucide-react'
 import Logo from '../components/ui/Logo'
 import Button from '../components/ui/Button'
@@ -18,42 +19,55 @@ import { cn } from '../utils/cn'
 const NAV = [
   { to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, end: true },
   { to: '/upload', label: 'Upload Interview', icon: UploadCloud, end: true },
-  { to: '/results', label: 'Analysis Results', icon: FileBarChart2 },
+  { to: '/results', label: 'Analysis Results', icon: FileBarChart2, kind: 'live' },
+  { to: '/results?archived=1', label: 'Archive', icon: Archive, kind: 'archive' },
   { to: '/compare', label: 'Compare', icon: Columns2, end: true },
   { to: '/candidates', label: 'Candidates', icon: Users },
   { to: '/settings', label: 'Settings', icon: Settings, end: true },
 ]
 
+function navIsActive(kind, end, isActive, location) {
+  const archived = new URLSearchParams(location.search).get('archived') === '1'
+  if (kind === 'live') return location.pathname === '/results' && !archived
+  if (kind === 'archive') return location.pathname === '/results' && archived
+  return isActive
+}
+
 function NavItems({ onNavigate }) {
+  const location = useLocation()
   return (
     <nav className="flex-1 space-y-1 px-3">
-      {NAV.map(({ to, label, icon: Icon, end }) => (
+      {NAV.map(({ to, label, icon: Icon, end, kind }) => (
         <NavLink
           key={to}
           to={to}
           end={end}
           onClick={onNavigate}
-          className={({ isActive }) =>
-            cn(
+          className={({ isActive }) => {
+            const on = navIsActive(kind, end, isActive, location)
+            return cn(
               'group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all',
-              isActive
+              on
                 ? 'bg-primary/10 text-primary shadow-soft'
                 : 'text-ink-muted hover:bg-surface-3 hover:text-ink',
             )
-          }
+          }}
         >
-          {({ isActive }) => (
-            <>
-              <Icon className={cn('h-5 w-5 shrink-0', isActive && 'text-primary')} />
-              <span>{label}</span>
-              {isActive && (
-                <motion.span
-                  layoutId="sidebar-active"
-                  className="ml-auto h-1.5 w-1.5 rounded-full bg-primary"
-                />
-              )}
-            </>
-          )}
+          {({ isActive }) => {
+            const on = navIsActive(kind, end, isActive, location)
+            return (
+              <>
+                <Icon className={cn('h-5 w-5 shrink-0', on && 'text-primary')} />
+                <span>{label}</span>
+                {on && (
+                  <motion.span
+                    layoutId="sidebar-active"
+                    className="ml-auto h-1.5 w-1.5 rounded-full bg-primary"
+                  />
+                )}
+              </>
+            )
+          }}
         </NavLink>
       ))}
     </nav>
