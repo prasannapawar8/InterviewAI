@@ -22,6 +22,7 @@ import CandidateHub from './pages/CandidateHub'
 import RoleTemplates from './pages/RoleTemplates'
 import Settings from './pages/Settings'
 import NotFound from './pages/NotFound'
+import Console from './pages/Console'
 
 // Route guard: send unauthenticated users to login
 function ProtectedRoute({ children }) {
@@ -40,6 +41,8 @@ export default function App() {
       {/* Public */}
       <Route path="/" element={<Landing />} />
       <Route path="/share/:token" element={<Results />} />
+      {/* Failure simulation for selfheal demos; outside auth so it works while the app fails */}
+      <Route path="/console" element={<Console />} />
 
       {/* Auth */}
       <Route element={<AuthLayout />}>

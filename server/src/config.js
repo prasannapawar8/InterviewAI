@@ -55,4 +55,6 @@ export const config = {
   resendApiKey: process.env.RESEND_API_KEY || '',
   emailFrom: process.env.EMAIL_FROM || 'IntervAI <noreply@intervai.local>',
   cookieSecure: process.env.COOKIE_SECURE === 'true' || isProd,
+  // Failure simulation console for selfheal demos (src/sim). Never enable outside a test cluster.
+  simConsole: process.env.SIM_CONSOLE === 'true',
 }

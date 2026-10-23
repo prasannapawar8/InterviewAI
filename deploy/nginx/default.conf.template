@@ -5,12 +5,29 @@ server {
     # Recordings are uploaded through /api (the API itself caps them at 500 MB).
     client_max_body_size 500m;
 
+    # Resolve the API per request instead of once at startup, so nginx starts even when cluster
+    # DNS is not ready yet (e.g. after a Docker restart) and follows the Service if it changes.
+    # NGINX_LOCAL_RESOLVERS comes from /etc/resolv.conf (NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1);
+    # the resolver ignores search domains, so API_UPSTREAM must be a fully qualified name.
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+    set $api http://${API_UPSTREAM};
+
     location /api/ {
-        proxy_pass http://${API_UPSTREAM};
+        proxy_pass $api;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
         proxy_read_timeout 300s;
+    }
+
+    # Failure simulation console API (only answers when the API runs with SIM_CONSOLE=true).
+    # Not logged here, so the console's own requests leave no trace.
+    location /__sim/ {
+        access_log off;
+        error_log /dev/null;
+        proxy_pass $api;
+        proxy_set_header Host $host;
+        proxy_read_timeout 10s;
     }
 
     # Single-page app: unknown paths fall back to index.html for React Router.

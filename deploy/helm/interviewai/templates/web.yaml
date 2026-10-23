@@ -40,7 +40,9 @@ spec:
           image: "{{ .Values.web.image }}:{{ .Values.web.tag }}"
           imagePullPolicy: IfNotPresent
           env:
-            - { name: API_UPSTREAM, value: "api:4000" }
+            # Fully qualified: nginx's resolver does not apply resolv.conf search domains.
+            - { name: API_UPSTREAM, value: "api.{{ .Release.Namespace }}.svc.cluster.local:4000" }
+            - { name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS, value: "1" }
           ports:
             - { name: http, containerPort: 80 }
           readinessProbe:

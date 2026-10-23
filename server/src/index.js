@@ -12,6 +12,7 @@ import { seedBuiltinTemplates } from './routes/templates.routes.js'
 import { errorHandler, notFound } from './middleware/errors.js'
 import { logger } from './logger.js'
 import { metricsHandler, metricsMiddleware } from './metrics.js'
+import { simEnabled, simMiddleware, simOnBoot, simRouter } from './sim/faults.js'
 import { initQueue, startWorker } from './services/queue.js'
 import { purgeExpiredMedia } from './services/retention.service.js'
 import authRoutes from './routes/auth.routes.js'
@@ -34,8 +35,12 @@ app.use((req, res, next) => {
   next()
 })
 
+// Simulation console: ahead of the metrics middleware so its own traffic is never counted.
+if (simEnabled()) app.use('/__sim', simRouter)
+
 app.use(metricsMiddleware)
 app.get('/metrics', metricsHandler)
+app.use(simMiddleware)
 
 app.use(
   cors({
@@ -87,6 +92,7 @@ export async function boot() {
   }
   fs.mkdirSync(path.join(config.dataDir, 'uploads'), { recursive: true })
   fs.mkdirSync(path.join(os.tmpdir(), 'intervai-uploads'), { recursive: true })
+  await simOnBoot()
 
   await prisma.$connect()
   await seedIfNeeded()

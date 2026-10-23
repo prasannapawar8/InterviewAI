@@ -3,7 +3,7 @@
 
 api:
   image: interviewai-api
-  tag: "0.2.0"
+  tag: "0.2.1"
   replicas: 1
   # Recreate: a broken release takes the API down instead of hiding behind the old pod. That
   # outage is what the selfheal agent is expected to detect and roll back.
@@ -17,10 +17,12 @@ api:
     JWT_EXPIRES_IN: 8h
     DEMO_EMAIL: aarav.mehta@example.com
     DEMO_PASSWORD: password123
+    # Failure simulation console at http://localhost:8080/console (selfheal demos only).
+    SIM_CONSOLE: "true"
 
 web:
   image: interviewai-web
-  tag: "0.1.0"
+  tag: "0.2.0"
   replicas: 1
   # Published on the host as http://localhost:8080 by the kind port mapping.
   nodePort: 30080

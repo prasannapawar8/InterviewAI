@@ -20,6 +20,11 @@ export default defineConfig({
         changeOrigin: true,
         cookieDomainRewrite: 'localhost',
       },
+      // Failure simulation console API (server/src/sim, SIM_CONSOLE=true)
+      '/__sim': {
+        target: process.env.VITE_API_TARGET || 'http://localhost:4000',
+        changeOrigin: true,
+      },
     },
   },
   build: {
