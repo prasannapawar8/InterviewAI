@@ -1,3 +1,9 @@
+{{- /*
+Workloads are named after their component (api, web, postgres) rather than <release>-<component>:
+the selfheal agent keys telemetry on one name per service (deployment = container = service).
+One release per namespace.
+*/ -}}
+
 {{- define "interviewai.labels" -}}
 app.kubernetes.io/part-of: interviewai
 app.kubernetes.io/instance: {{ .Release.Name }}
@@ -6,5 +12,5 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- end }}
 
 {{- define "interviewai.databaseUrl" -}}
-postgresql://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@{{ .Release.Name }}-postgres:5432/{{ .Values.postgres.database }}?schema=public
+postgresql://{{ .Values.postgres.user }}:{{ .Values.postgres.password }}@postgres:5432/{{ .Values.postgres.database }}?schema=public
 {{- end }}

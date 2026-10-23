@@ -1,0 +1,82 @@
+{{- if .Values.loadgen.enabled }}
+# Steady background traffic through the web tier, so request rate, error rate and latency have a
+# baseline the selfheal detectors can learn and the verifier can score against.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loadgen
+  labels:
+    {{- include "interviewai.labels" . | nindent 4 }}
+    app.kubernetes.io/name: loadgen
+data:
+  loadgen.mjs: |
+    const base = process.env.TARGET || 'http://web'
+    const interval = Number(process.env.INTERVAL_MS || 1000)
+    const creds = { email: process.env.DEMO_EMAIL, password: process.env.DEMO_PASSWORD }
+    let token = null
+
+    async function call(path, opts = {}) {
+      const headers = { ...(opts.headers || {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) }
+      const res = await fetch(base + path, { ...opts, headers, signal: AbortSignal.timeout(5000) })
+      if (res.status === 401) token = null
+      return res
+    }
+
+    async function tick() {
+      await call('/api/health')
+      if (!token) {
+        const res = await call('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(creds),
+        })
+        if (res.ok) token = (await res.json()).token
+      }
+      if (token) {
+        await call('/api/dashboard/stats')
+        await call('/api/analyses?limit=20')
+      }
+    }
+
+    setInterval(() => tick().catch(() => { token = null }), interval)
+    console.log(`loadgen -> ${base} every ${interval}ms`)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loadgen
+  labels:
+    {{- include "interviewai.labels" . | nindent 4 }}
+    app.kubernetes.io/name: loadgen
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: loadgen
+  template:
+    metadata:
+      labels:
+        {{- include "interviewai.labels" . | nindent 8 }}
+        app.kubernetes.io/name: loadgen
+    spec:
+      containers:
+        - name: loadgen
+          # Reuses the API image for its Node runtime; nothing extra to pull.
+          image: "{{ .Values.api.image }}:{{ .Values.loadgen.tag | default .Values.api.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: [node, /loadgen/loadgen.mjs]
+          env:
+            - { name: TARGET, value: "http://web" }
+            - { name: INTERVAL_MS, value: {{ .Values.loadgen.intervalMs | quote }} }
+            - { name: DEMO_EMAIL, value: {{ .Values.api.env.DEMO_EMAIL | quote }} }
+            - { name: DEMO_PASSWORD, value: {{ .Values.api.env.DEMO_PASSWORD | quote }} }
+          resources:
+            requests: { cpu: 10m, memory: 48Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - { name: script, mountPath: /loadgen }
+      volumes:
+        - name: script
+          configMap: { name: loadgen }
+{{- end }}

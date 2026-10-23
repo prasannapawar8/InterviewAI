@@ -11,6 +11,7 @@ import { seedIfNeeded } from './db.js'
 import { seedBuiltinTemplates } from './routes/templates.routes.js'
 import { errorHandler, notFound } from './middleware/errors.js'
 import { logger } from './logger.js'
+import { metricsHandler, metricsMiddleware } from './metrics.js'
 import { initQueue, startWorker } from './services/queue.js'
 import { purgeExpiredMedia } from './services/retention.service.js'
 import authRoutes from './routes/auth.routes.js'
@@ -32,6 +33,9 @@ app.use((req, res, next) => {
   res.setHeader('X-Request-Id', req.requestId)
   next()
 })
+
+app.use(metricsMiddleware)
+app.get('/metrics', metricsHandler)
 
 app.use(
   cors({

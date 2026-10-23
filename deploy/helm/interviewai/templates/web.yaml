@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ .Release.Name }}-web
+  name: web
   labels:
     {{- include "interviewai.labels" . | nindent 4 }}
     app.kubernetes.io/name: web
@@ -19,7 +19,7 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-web
+  name: web
   labels:
     {{- include "interviewai.labels" . | nindent 4 }}
     app.kubernetes.io/name: web
@@ -40,7 +40,7 @@ spec:
           image: "{{ .Values.web.image }}:{{ .Values.web.tag }}"
           imagePullPolicy: IfNotPresent
           env:
-            - { name: API_UPSTREAM, value: "{{ .Release.Name }}-api:4000" }
+            - { name: API_UPSTREAM, value: "api:4000" }
           ports:
             - { name: http, containerPort: 80 }
           readinessProbe:

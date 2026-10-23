@@ -1,10 +1,13 @@
 # Values for a local kind cluster (deploy/kind/cluster.yaml). Images are built locally and loaded
-# with `kind load docker-image`, so they are never pulled.
+# into kind, so they are never pulled.
 
 api:
   image: interviewai-api
-  tag: "0.1.0"
+  tag: "0.2.0"
   replicas: 1
+  # Recreate: a broken release takes the API down instead of hiding behind the old pod. That
+  # outage is what the selfheal agent is expected to detect and roll back.
+  strategy: Recreate
   # The selfheal agent raises or lowers these, so keep them explicit.
   resources:
     requests: { cpu: 100m, memory: 192Mi }
@@ -34,6 +37,12 @@ postgres:
   resources:
     requests: { cpu: 50m, memory: 128Mi }
     limits: { memory: 512Mi }
+
+loadgen:
+  enabled: true
+  # Pinned apart from api.tag, so a broken API release does not also break the traffic source.
+  tag: "0.2.0"
+  intervalMs: 1000
 
 # Local demo only. Override for anything shared.
 jwtSecret: interviewai-kind-demo-secret-change-me
