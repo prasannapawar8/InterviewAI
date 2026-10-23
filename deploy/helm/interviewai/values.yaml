@@ -1,0 +1,39 @@
+# Values for a local kind cluster (deploy/kind/cluster.yaml). Images are built locally and loaded
+# with `kind load docker-image`, so they are never pulled.
+
+api:
+  image: interviewai-api
+  tag: "0.1.0"
+  replicas: 1
+  # The selfheal agent raises or lowers these, so keep them explicit.
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+  env:
+    AI_PROVIDER: mock
+    JWT_EXPIRES_IN: 8h
+    DEMO_EMAIL: aarav.mehta@example.com
+    DEMO_PASSWORD: password123
+
+web:
+  image: interviewai-web
+  tag: "0.1.0"
+  replicas: 1
+  # Published on the host as http://localhost:8080 by the kind port mapping.
+  nodePort: 30080
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits: { memory: 128Mi }
+
+postgres:
+  image: postgres:16-alpine
+  user: intervai
+  password: intervai
+  database: intervai
+  storage: 1Gi
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { memory: 512Mi }
+
+# Local demo only. Override for anything shared.
+jwtSecret: interviewai-kind-demo-secret-change-me

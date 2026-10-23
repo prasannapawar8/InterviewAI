@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "interviewai.labels" . | nindent 4 }}
+    app.kubernetes.io/name: api
+spec:
+  selector:
+    app.kubernetes.io/instance: {{ .Release.Name }}
+    app.kubernetes.io/name: api
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-api
+  labels:
+    {{- include "interviewai.labels" . | nindent 4 }}
+    app.kubernetes.io/name: api
+spec:
+  replicas: {{ .Values.api.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/name: api
+  template:
+    metadata:
+      labels:
+        {{- include "interviewai.labels" . | nindent 8 }}
+        app.kubernetes.io/name: api
+    spec:
+      initContainers:
+        # Wait for Postgres so the first `prisma db push` does not crash-loop the API.
+        - name: wait-for-postgres
+          image: {{ .Values.postgres.image }}
+          command:
+            - sh
+            - -c
+            - until pg_isready -h {{ .Release.Name }}-postgres -U {{ .Values.postgres.user }}; do sleep 2; done
+      containers:
+        - name: api
+          image: "{{ .Values.api.image }}:{{ .Values.api.tag }}"
+          imagePullPolicy: IfNotPresent
+          command: [sh, -c, "npx prisma db push --skip-generate && node src/index.js"]
+          env:
+            - { name: PORT, value: "4000" }
+            - { name: CLIENT_ORIGIN, value: "http://localhost:8080" }
+            - { name: DATA_DIR, value: /app/data }
+            {{- range $k, $v := .Values.api.env }}
+            - { name: {{ $k }}, value: {{ $v | quote }} }
+            {{- end }}
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-secrets, key: DATABASE_URL } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: {{ .Release.Name }}-secrets, key: JWT_SECRET } }
+          ports:
+            - { name: http, containerPort: 4000 }
+          # /api/health also checks the database, so it gates traffic but not restarts.
+          readinessProbe:
+            httpGet: { path: /api/health, port: http }
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket: { port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.api.resources | nindent 12 }}
+          volumeMounts:
+            - { name: data, mountPath: /app/data }
+      volumes:
+        # Uploaded recordings. Lost when the pod is replaced, which is fine for a demo cluster.
+        - name: data
+          emptyDir: {}

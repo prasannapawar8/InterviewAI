@@ -1,0 +1,6 @@
+apiVersion: v2
+name: interviewai
+description: IntervAI (API, web, Postgres) on Kubernetes, as the workload the selfheal agent watches.
+type: application
+version: 0.1.0
+appVersion: "2.0.0"

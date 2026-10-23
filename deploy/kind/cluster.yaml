@@ -1,0 +1,14 @@
+# Local cluster for running IntervAI under the selfheal agent.
+#   kind create cluster --config deploy/kind/cluster.yaml
+# The web service is a NodePort on 30080, published on http://localhost:8080. A NodePort survives
+# pod restarts, unlike `kubectl port-forward`, which matters when pods are killed on purpose.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: interviewai
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
