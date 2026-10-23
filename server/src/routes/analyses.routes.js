@@ -25,7 +25,11 @@ const upload = multer({
   limits: { fileSize: config.maxUploadBytes },
   fileFilter: (req, file, cb) => {
     const ok = file.mimetype.startsWith('audio/') || file.mimetype.startsWith('video/')
-    cb(ok ? null : new Error('Only audio or video files are supported'), ok)
+    if (ok) return cb(null, true)
+    const err = new Error('Only audio or video files are supported')
+    err.status = 400
+    err.code = 'unsupported_media_type'
+    cb(err, false)
   },
 })
 
